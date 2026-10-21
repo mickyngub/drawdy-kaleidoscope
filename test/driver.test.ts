@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { DriverManifest } from "@drawdy/driver-protocol";
 import * as driver from "../src/index";
-import { BAR_Y } from "../src/bar";
 import {
     boot,
     fakeHost,
@@ -117,7 +116,7 @@ test("turning the mode on centres the bar at the top, draws the guides and watch
     const width = bar.schema.styles?.width?.[0] as number;
     assert.deepEqual(bar.position, {
         x: Math.round((1600 - width) / 2),
-        y: BAR_Y,
+        y: 64,
     });
     assert.equal(host.previews.length, 7);
     const circle = host.previews.find((el) => el.type === "shape");
@@ -319,7 +318,7 @@ test("a window resize re-centres the bar", async () => {
     await emit("subscription:dom:screen-resized", { width: 1000, height: 700 });
     assert.deepEqual(host.floating.get(BAR)?.position, {
         x: Math.round((1000 - width) / 2),
-        y: BAR_Y,
+        y: 64,
     });
     await escape(emit);
 });

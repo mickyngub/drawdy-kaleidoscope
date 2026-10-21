@@ -10,7 +10,8 @@ export type BarNotice = { key: string; text: string };
 
 export type BarLook = { driverId: string; styling: ModuleStyling };
 
-export const BAR_Y = 16;
+// Clears Drawdy's main toolbar, which spans about y 12 to 50 px.
+export const BAR_Y = 64;
 export const NOTICE_MS = 3000;
 
 const PADDING = 6;
