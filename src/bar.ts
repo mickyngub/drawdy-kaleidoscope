@@ -38,6 +38,9 @@ export const barId = (driverId: string): string => `${driverId}:bar`;
 export const barButtonId = (driverId: string, key: string): string =>
     `${driverId}:bar:${key}`;
 
+export const barUnderlineId = (driverId: string, key: string): string =>
+    `${driverId}:bar:${key}:underline`;
+
 export const barNoticeId = (driverId: string, key: string): string =>
     `${driverId}:bar:notice:${key}`;
 
@@ -107,6 +110,7 @@ function toolButton(
                     { type: "box", styles: { height: [UNDERLINE_GAP, "px"] } },
                     {
                         type: "box",
+                        domId: barUnderlineId(look.driverId, c.key),
                         styles: {
                             width: [UNDERLINE_WIDTH, "px"],
                             height: [UNDERLINE_HEIGHT, "px"],

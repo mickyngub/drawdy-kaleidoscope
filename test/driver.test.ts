@@ -132,18 +132,21 @@ const highlighted = (host: FakeHost) =>
         )
         .map((node) => node.domId);
 
-const underlined = (host: FakeHost) =>
-    schemaNodes(host.floating.get(BAR)?.schema ?? { type: "box" })
-        .filter(
-            (node) =>
-                node.type === "button" &&
-                schemaNodes(node).some(
-                    (inner) =>
-                        inner.type === "box" &&
-                        inner.styles?.backgroundColor === STYLING.primary
-                )
-        )
-        .map((node) => node.domId);
+const TOOL_KEYS = ["pencil", "line", "arrow"];
+
+/** Each tool's underline fill, read through the underline node's own domId. */
+const underlines = (host: FakeHost) => {
+    const nodes = schemaNodes(
+        host.floating.get(BAR)?.schema ?? { type: "box" }
+    );
+    return Object.fromEntries(
+        TOOL_KEYS.map((tool) => [
+            tool,
+            nodes.find((node) => node.domId === `${barButton(tool)}:underline`)
+                ?.styles?.backgroundColor,
+        ])
+    );
+};
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -167,7 +170,11 @@ test("turning the mode on switches to the Pencil, puts the bar at the bottom cen
         barButton("6"),
         barButton("mirror"),
     ]);
-    assert.deepEqual(underlined(host), [barButton("pencil")]);
+    assert.deepEqual(underlines(host), {
+        pencil: STYLING.primary,
+        line: "transparent",
+        arrow: "transparent",
+    });
     const pencil = schemaNodes(bar.schema).find(
         (node) => node.domId === barButton("pencil")
     );
@@ -392,12 +399,23 @@ test("the tool buttons switch Drawdy's tool and highlight the choice at once", a
             host.sent.find((s) => s.type === "command:tools:set-active")?.req,
             { toolId: tool }
         );
-        assert.ok(highlighted(host).includes(barButton(tool)));
-        assert.equal(
-            highlighted(host).filter((id) =>
-                ["pencil", "line", "arrow"].some((t) => id === barButton(t))
-            ).length,
-            1
+        assert.deepEqual(
+            underlines(host),
+            Object.fromEntries(
+                TOOL_KEYS.map((t) => [
+                    t,
+                    t === tool ? STYLING.primary : "transparent",
+                ])
+            )
+        );
+        const fills = schemaNodes(host.floating.get(BAR)!.schema)
+            .filter((node) =>
+                TOOL_KEYS.some((t) => node.domId === barButton(t))
+            )
+            .map((node) => node.styles?.backgroundColor);
+        assert.ok(
+            !fills.includes(STYLING.primary),
+            "tools never get the lime fill"
         );
     }
     await escape(emit);
