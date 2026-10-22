@@ -3,7 +3,6 @@ import type { Symmetry } from "./lib/symmetry";
 
 type Rect = { x: number; y: number; width: number; height: number };
 
-const COLOUR = "#9ca3af";
 const OPACITY = 0.6;
 const LINE_PX = 1.5;
 const CENTRE_RADIUS_PX = 6;
@@ -13,7 +12,8 @@ export function guideElements(
     sym: Symmetry,
     viewport: Rect,
     zoom: number,
-    newId: () => string
+    newId: () => string,
+    colour: string
 ): DrawdyPreviewElementSchema[] {
     const scale = zoom > 0 ? zoom : 1;
     const { x, y } = sym.centre;
@@ -31,7 +31,7 @@ export function guideElements(
                     x + length * Math.cos(angle),
                     y + length * Math.sin(angle),
                 ],
-                color: COLOUR,
+                color: colour,
                 strokeWidth,
                 strokeDash: "dashed",
                 opacity: OPACITY,
@@ -49,7 +49,7 @@ export function guideElements(
             y: y - r,
             width: 2 * r,
             height: 2 * r,
-            strokeColor: COLOUR,
+            strokeColor: colour,
             fillColor: "transparent",
             strokeWidth,
             opacity: OPACITY,

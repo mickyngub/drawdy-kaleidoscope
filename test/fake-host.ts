@@ -324,7 +324,7 @@ export async function boot(
     module: DriverModule,
     host: FakeHost,
     manifest: DriverManifest,
-    styling: Record<string, string> = { theme: "light" }
+    styling: Record<string, unknown> = { theme: "light" }
 ) {
     await module.activate({
         manifest,

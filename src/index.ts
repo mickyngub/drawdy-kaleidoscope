@@ -2,12 +2,20 @@ import type {
     DrawdyElementSchema,
     DriverCommandIssuer,
     DriverModule,
+    ModuleStyling,
     SubscribeableKey,
     SubscribedDrawdyElement,
 } from "@drawdy/driver-protocol";
 import { createBar, type Bar, type BarChoice } from "./bar";
 import { guideElements } from "./guides";
-import { ARROW_ICON, LINE_ICON, PENCIL_ICON } from "./icons";
+import {
+    ARROW_ICON,
+    LINE_ICON,
+    MIRROR_ICON,
+    PENCIL_ICON,
+    RECENTRE_ICON,
+    STOP_ICON,
+} from "./icons";
 import { lineCopies, type LineStroke } from "./lib/lines";
 import {
     createStrokeWatch,
@@ -22,6 +30,7 @@ import {
     type Segments,
     type Symmetry,
 } from "./lib/symmetry";
+import { themeColour } from "./theme";
 
 // Drawdy shows this through <img>, where currentColor is black, so the colours are explicit.
 const ACTION_BUTTON_SVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><image href="data:image/webp;base64,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" x="0" y="0" width="24" height="24"/></svg>`;
@@ -89,10 +98,10 @@ const GROUPS: BarChoice[][] = [
         { key: "arrow", label: "Arrow", icon: ARROW_ICON, indicator: true },
     ],
     SEGMENT_CHOICES.map((n) => ({ key: String(n), label: String(n) })),
-    [{ key: "mirror", label: "Mirror" }],
+    [{ key: "mirror", label: "Mirror", icon: MIRROR_ICON }],
     [
-        { key: "recentre", label: "Recentre" },
-        { key: "stop", label: "Stop" },
+        { key: "recentre", label: "Recentre", icon: RECENTRE_ICON },
+        { key: "stop", label: "Stop", icon: STOP_ICON },
     ],
 ];
 
@@ -119,6 +128,7 @@ class PermissionDenied extends Error {}
 let issue: DriverCommandIssuer;
 let driverId: string;
 let generateId: () => string;
+let styling: ModuleStyling;
 let bar: Bar;
 let seq = 0;
 let settings: Settings | null = null;
@@ -213,7 +223,13 @@ async function createGuides(sym: Symmetry): Promise<string | null> {
         type: "command:scene:create-drawdy-preview-elements",
         ...stamp(),
         req: {
-            elements: guideElements(sym, viewport, zoom, generateId),
+            elements: guideElements(
+                sym,
+                viewport,
+                zoom,
+                generateId,
+                themeColour(styling, "--dd-text-tertiary", "mutedForeground")
+            ),
             hitTestable: false,
         },
     });
@@ -590,6 +606,7 @@ export const activate: DriverModule["activate"] = async (ctx) => {
     issue = ctx.issueCommand;
     driverId = ctx.manifest.driverId;
     generateId = ctx.generateId;
+    styling = ctx.styling;
     settings = null;
     mode = null;
     control = Promise.resolve();
@@ -597,7 +614,7 @@ export const activate: DriverModule["activate"] = async (ctx) => {
         issue,
         driverId,
         groups: GROUPS,
-        styling: ctx.styling,
+        styling,
         requestId: () => String(seq++),
         log,
     });
@@ -660,7 +677,11 @@ export const onEvent: DriverModule["onEvent"] = async (event) => {
                 return;
             }
             case "subscription:dom:theme-changed": {
-                await bar.restyle(event.body.styling);
+                styling = event.body.styling;
+                await bar.restyle(styling);
+                await serial(async () => {
+                    if (mode) await rebuildGuides(mode);
+                });
                 return;
             }
             default:

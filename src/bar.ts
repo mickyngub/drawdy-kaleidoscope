@@ -3,6 +3,7 @@ import type {
     DriverCommandIssuer,
     ModuleStyling,
 } from "@drawdy/driver-protocol";
+import { themeColour } from "./theme";
 
 export type BarChoice = {
     key: string;
@@ -22,18 +23,52 @@ export const NOTICE_MS = 3000;
 
 const PADDING = 4;
 const BORDER = 1;
-const GAP = 4;
-const BUTTON = 32;
+const GAP = 2;
+const ITEM = 30;
 const ICON = 16;
-const ICON_TOP = (BUTTON - ICON) / 2;
+const ICON_TOP = (ITEM - ICON) / 2;
+const ICON_GAP = 4;
+const LABEL_INSET = 8;
 const UNDERLINE_GAP = 3;
-const UNDERLINE_WIDTH = 14;
+const UNDERLINE_WIDTH = 16;
 const UNDERLINE_HEIGHT = 2;
 const RADIUS = 8;
-const DIVIDER_HEIGHT = 20;
-const NOTICE_HEIGHT = 16;
-const LABEL_CHAR_PX = 7.5;
-const LABEL_PADDING = 16;
+const BAR_RADIUS = 12;
+const DIVIDER_SLOT = 5;
+const DIVIDER_HEIGHT = 16;
+const FONT_SIZE = 12;
+const NOTICE_HEIGHT = 18;
+
+// Measured in Drawdy's Google Sans Flex at 12 px medium.
+const LABEL_PX: Readonly<Record<string, number>> = {
+    Mirror: 35,
+    Recentre: 51,
+    Stop: 26,
+};
+
+type Palette = {
+    panel: string;
+    border: string;
+    divider: string;
+    control: string;
+    hover: string;
+    text: string;
+    muted: string;
+    accent: string;
+};
+
+type Paint = { driverId: string; colours: Palette };
+
+const palette = (styling: ModuleStyling): Palette => ({
+    panel: themeColour(styling, "--dd-surface-panel", "surface"),
+    border: themeColour(styling, "--dd-border-subtle", "border"),
+    divider: themeColour(styling, "--dd-divider", "border"),
+    control: themeColour(styling, "--dd-control-surface", "surface2"),
+    hover: themeColour(styling, "--dd-interaction-hover", "surface2"),
+    text: themeColour(styling, "--dd-text-primary", "foreground"),
+    muted: themeColour(styling, "--dd-text-secondary", "mutedForeground"),
+    accent: themeColour(styling, "--dd-accent", "primary"),
+});
 
 export const barId = (driverId: string): string => `${driverId}:bar`;
 
@@ -46,76 +81,87 @@ export const barUnderlineId = (driverId: string, key: string): string =>
 export const barNoticeId = (driverId: string, key: string): string =>
     `${driverId}:bar:notice:${key}`;
 
-const buttonWidth = (c: BarChoice): number =>
-    c.icon
-        ? BUTTON
-        : Math.max(
-              BUTTON,
-              Math.round(LABEL_PADDING + c.label.length * LABEL_CHAR_PX)
-          );
+const labelWidth = (label: string): number => {
+    const px = LABEL_PX[label];
+    if (px === undefined) throw new Error(`no measured width for "${label}"`);
+    return px;
+};
+
+const itemWidth = (c: BarChoice): number =>
+    c.icon && !c.indicator
+        ? 2 * LABEL_INSET + ICON + ICON_GAP + labelWidth(c.label)
+        : ITEM;
 
 // A floating element is placed by its top-left corner, so the bar's size is fixed here rather than measured.
 export const barWidth = (groups: readonly (readonly BarChoice[])[]): number => {
-    const buttons = groups.flat();
+    const items = groups.flat();
     const dividers = Math.max(0, groups.length - 1);
-    const items = buttons.length + dividers;
     return (
         2 * (PADDING + BORDER) +
-        buttons.reduce((sum, c) => sum + buttonWidth(c), 0) +
-        dividers +
-        GAP * Math.max(0, items - 1)
+        items.reduce((sum, c) => sum + itemWidth(c), 0) +
+        dividers * DIVIDER_SLOT +
+        GAP * Math.max(0, items.length + dividers - 1)
     );
 };
 
 export const barHeight = (withNotice: boolean): number =>
-    2 * (PADDING + BORDER) + BUTTON + (withNotice ? GAP + NOTICE_HEIGHT : 0);
+    2 * (PADDING + BORDER) + ITEM + (withNotice ? GAP + NOTICE_HEIGHT : 0);
 
-// An indicator marks the active one the way Drawdy's own toolbar does, a soft
-// fill and an underline, so it reads apart from the lime settings beside it.
+const label = (text: string, colour: string): DomElementSchema => ({
+    type: "text",
+    child: text,
+    styles: {
+        color: colour,
+        fontSize: [FONT_SIZE, "px"],
+        fontWeight: "medium",
+        textAlign: "center",
+    },
+});
+
+const glyph = (src: string): DomElementSchema => ({
+    type: "image",
+    child: src,
+    styles: { width: [ICON, "px"], height: [ICON, "px"] },
+});
+
+// An indicator marks the active tool the way Drawdy's own toolbar does, with a lime underline.
 function indicator(
-    look: BarLook,
+    paint: Paint,
     c: BarChoice,
     icon: (colour: string) => string,
     on: boolean
 ): DomElementSchema {
-    const { styling } = look;
+    const { colours } = paint;
     return {
         type: "box",
-        domId: barButtonId(look.driverId, c.key),
+        domId: barButtonId(paint.driverId, c.key),
         styles: {
-            width: [BUTTON, "px"],
-            height: [BUTTON, "px"],
+            width: [ITEM, "px"],
+            height: [ITEM, "px"],
             borderRadius: [RADIUS, "px"],
-            backgroundColor: on ? styling.surface2 : "transparent",
+            backgroundColor: on ? colours.control : "transparent",
         },
         children: [
             {
                 type: "column",
                 styles: {
-                    width: [BUTTON, "px"],
-                    height: [BUTTON, "px"],
+                    width: [ITEM, "px"],
+                    height: [ITEM, "px"],
                     crossAxisAlignment: "center",
                 },
                 children: [
                     { type: "box", styles: { height: [ICON_TOP, "px"] } },
-                    {
-                        type: "image",
-                        child: icon(styling.foreground),
-                        styles: {
-                            width: [ICON, "px"],
-                            height: [ICON, "px"],
-                        },
-                    },
+                    glyph(icon(on ? colours.text : colours.muted)),
                     { type: "box", styles: { height: [UNDERLINE_GAP, "px"] } },
                     {
                         type: "box",
-                        domId: barUnderlineId(look.driverId, c.key),
+                        domId: barUnderlineId(paint.driverId, c.key),
                         styles: {
                             width: [UNDERLINE_WIDTH, "px"],
                             height: [UNDERLINE_HEIGHT, "px"],
                             borderRadius: [UNDERLINE_HEIGHT / 2, "px"],
                             backgroundColor: on
-                                ? styling.primary
+                                ? colours.accent
                                 : "transparent",
                         },
                     },
@@ -125,34 +171,58 @@ function indicator(
     };
 }
 
-function item(look: BarLook, c: BarChoice, on: boolean): DomElementSchema {
-    if (c.indicator && c.icon) return indicator(look, c, c.icon, on);
-    const { styling } = look;
+function item(paint: Paint, c: BarChoice, on: boolean): DomElementSchema {
+    if (c.indicator && c.icon) return indicator(paint, c, c.icon, on);
+    const { colours } = paint;
+    const colour = on ? colours.text : colours.muted;
+    const width = itemWidth(c);
     return {
         type: "button",
-        domId: barButtonId(look.driverId, c.key),
+        domId: barButtonId(paint.driverId, c.key),
         styles: {
-            width: [buttonWidth(c), "px"],
-            height: [BUTTON, "px"],
+            width: [width, "px"],
+            height: [ITEM, "px"],
             borderRadius: [RADIUS, "px"],
-            backgroundColor: on ? styling.primary : "transparent",
+            backgroundColor: on ? colours.control : "transparent",
             cursor: "pointer",
-            ...(on ? {} : { hover: { backgroundColor: styling.surface2 } }),
+            ...(on ? {} : { hover: { backgroundColor: colours.hover } }),
         },
-        children: [
-            {
-                type: "text",
-                child: c.label,
-                styles: {
-                    color: on ? styling.primaryForeground : styling.foreground,
-                    fontSize: [13, "px"],
-                    fontWeight: "medium",
-                    textAlign: "center",
-                },
-            },
-        ],
+        children: c.icon
+            ? [
+                  {
+                      type: "row",
+                      styles: {
+                          width: [width, "px"],
+                          height: [ITEM, "px"],
+                          gap: ICON_GAP,
+                          mainAxisAlignment: "center",
+                          crossAxisAlignment: "center",
+                      },
+                      children: [glyph(c.icon(colour)), label(c.label, colour)],
+                  },
+              ]
+            : [label(c.label, colour)],
     };
 }
+
+const divider = (colours: Palette): DomElementSchema => ({
+    type: "row",
+    styles: {
+        width: [DIVIDER_SLOT, "px"],
+        height: [DIVIDER_HEIGHT, "px"],
+        mainAxisAlignment: "center",
+    },
+    children: [
+        {
+            type: "box",
+            styles: {
+                width: [1, "px"],
+                height: [DIVIDER_HEIGHT, "px"],
+                backgroundColor: colours.divider,
+            },
+        },
+    ],
+});
 
 export function barSchema(
     look: BarLook,
@@ -160,21 +230,14 @@ export function barSchema(
     active: readonly string[],
     notice?: BarNotice
 ): DomElementSchema {
-    const { driverId, styling } = look;
+    const { driverId } = look;
+    const colours = palette(look.styling);
+    const paint: Paint = { driverId, colours };
     const width = barWidth(groups);
     const items: DomElementSchema[] = [];
     groups.forEach((group, i) => {
-        if (i > 0) {
-            items.push({
-                type: "box",
-                styles: {
-                    width: [1, "px"],
-                    height: [DIVIDER_HEIGHT, "px"],
-                    backgroundColor: styling.border,
-                },
-            });
-        }
-        const made = group.map((c) => item(look, c, active.includes(c.key)));
+        if (i > 0) items.push(divider(colours));
+        const made = group.map((c) => item(paint, c, active.includes(c.key)));
         if (group.every((c) => c.indicator)) {
             items.push({
                 type: "row",
@@ -200,8 +263,8 @@ export function barSchema(
             styles: {
                 width: [width - 2 * (PADDING + BORDER), "px"],
                 height: [NOTICE_HEIGHT, "px"],
-                color: styling.foreground,
-                fontSize: [12, "px"],
+                color: colours.muted,
+                fontSize: [FONT_SIZE, "px"],
                 textAlign: "center",
             },
         });
@@ -214,10 +277,10 @@ export function barSchema(
             height: [barHeight(notice !== undefined), "px"],
             padding: [PADDING, "px"],
             gap: GAP,
-            backgroundColor: styling.surface,
-            borderColor: styling.border,
+            backgroundColor: colours.panel,
+            borderColor: colours.border,
             borderWidth: [BORDER, "px"],
-            borderRadius: [RADIUS + PADDING, "px"],
+            borderRadius: [BAR_RADIUS, "px"],
             pointerEvents: "auto",
             crossAxisAlignment: "center",
         },

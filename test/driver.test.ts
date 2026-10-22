@@ -34,7 +34,18 @@ const STROKE: Stored = {
 
 type Emit = Awaited<ReturnType<typeof boot>>["emit"];
 
-const STYLING = { theme: "light", primary: "#2563eb", surface2: "#e4e4e7" };
+const FLAT = { theme: "light", primary: "#2563eb", surface2: "#e4e4e7" };
+const CONTROL = "#00000014";
+const ACCENT = "#c5f601";
+const TERTIARY = "#00000080";
+const STYLING = {
+    ...FLAT,
+    tokens: {
+        "--dd-control-surface": CONTROL,
+        "--dd-accent": ACCENT,
+        "--dd-text-tertiary": TERTIARY,
+    },
+};
 
 async function started(options: Parameters<typeof fakeHost>[0] = {}) {
     const host = fakeHost(options);
@@ -117,13 +128,12 @@ const sizeOf = (host: FakeHost) => {
     };
 };
 
-// Settings light up with a primary fill; the tool indicators, as in Drawdy's toolbar, with a primary underline.
-const highlighted = (host: FakeHost) =>
+// Settings light up with the neutral control fill; the tool indicators add a lime underline, as in Drawdy's toolbar.
+const highlighted = (host: FakeHost, fill: string = CONTROL) =>
     schemaNodes(host.floating.get(BAR)?.schema ?? { type: "box" })
         .filter(
             (node) =>
-                node.type === "button" &&
-                node.styles?.backgroundColor === STYLING.primary
+                node.type === "button" && node.styles?.backgroundColor === fill
         )
         .map((node) => node.domId);
 
@@ -165,14 +175,14 @@ test("turning the mode on leaves Drawdy's tool alone, puts the bar at the bottom
     );
     assert.deepEqual(highlighted(host), [barButton("6"), barButton("mirror")]);
     assert.deepEqual(underlines(host), {
-        pencil: STYLING.primary,
+        pencil: ACCENT,
         line: "transparent",
         arrow: "transparent",
     });
     const pencil = schemaNodes(bar.schema).find(
         (node) => node.domId === barButton("pencil")
     );
-    assert.equal(pencil?.styles?.backgroundColor, STYLING.surface2);
+    assert.equal(pencil?.styles?.backgroundColor, CONTROL);
     assert.deepEqual(toolSets(host), []);
     assert.deepEqual(noticeKeys(host), []);
     assert.equal(host.previews.length, 7);
@@ -185,6 +195,43 @@ test("turning the mode on leaves Drawdy's tool alone, puts the bar at the bottom
     );
     assert.ok(host.subscribedTo("subscription:scene:elements-added"));
     assert.ok(host.subscribedTo("subscription:scene:pointer-position"));
+    await escape(emit);
+});
+
+test("a host that sends no tokens styles the bar from the flat keys", async () => {
+    const host = fakeHost();
+    const { emit } = await boot(driver, host, manifest, FLAT);
+    await click(emit, BUTTON);
+    assert.deepEqual(highlighted(host, FLAT.surface2), [
+        barButton("6"),
+        barButton("mirror"),
+    ]);
+    assert.equal(underlines(host).pencil, FLAT.primary);
+    await escape(emit);
+});
+
+test("a theme change repaints the bar and the guides from the new tokens", async () => {
+    const { host, emit } = await started();
+    const guideColours = () =>
+        new Set(host.previews.map((el) => el.color ?? el.strokeColor));
+    assert.deepEqual(guideColours(), new Set([TERTIARY]));
+    await emit("subscription:dom:theme-changed", {
+        styling: {
+            ...STYLING,
+            theme: "dark",
+            tokens: {
+                "--dd-control-surface": "#ffffff1f",
+                "--dd-accent": ACCENT,
+                "--dd-text-tertiary": "#ffffff80",
+            },
+        },
+    });
+    assert.deepEqual(highlighted(host, "#ffffff1f"), [
+        barButton("6"),
+        barButton("mirror"),
+    ]);
+    assert.equal(host.previews.length, 7);
+    assert.deepEqual(guideColours(), new Set(["#ffffff80"]));
     await escape(emit);
 });
 
@@ -424,10 +471,7 @@ test("the poll keeps the tool highlight in sync with Drawdy's toolbar", async (t
         assert.deepEqual(
             underlines(host),
             Object.fromEntries(
-                TOOL_KEYS.map((k) => [
-                    k,
-                    k === tool ? STYLING.primary : "transparent",
-                ])
+                TOOL_KEYS.map((k) => [k, k === tool ? ACCENT : "transparent"])
             )
         );
     }
