@@ -2,7 +2,7 @@
     "driverId": "mickyngub.kaleidoscope",
     "driverName": "Kaleidoscope",
     "driverVersion": "1.0.0",
-    "description": "Draw like a kaleidoscope: every pencil stroke you finish is copied around a centre point, so a few strokes become a mandala, a snowflake or a flower. Choose 2, 3, 4, 6, 8 or 12 segments and turn Mirror on or off. Dashed guides that only you see mark the segments, and Recentre moves the centre to the middle of your view. The copies are ordinary strokes everyone sees, and one undo takes them away. Only your own pencil strokes are copied, never a collaborator's.",
+    "description": "Draw one stroke, get a mandala. Click the flower, pick the Pencil and draw: every stroke you finish is copied around a centre point, turned and mirrored. Choose 2, 3, 4, 6, 8 or 12 segments, turn Mirror on or off, and Recentre to the middle of your view. Dashed guides only you see mark the segments, and one undo takes the copies away. Made for mandalas, snowflakes, cards and doodling on calls.",
     "icon": "icon.png",
     "main": "main.js",
     "permissions": [

@@ -1,42 +1,40 @@
-# Kaleidoscope
+# Kaleidoscope ✿(◠‿◠)✿
 
-Draw like a kaleidoscope on your Drawdy board. Turn it on and every pencil stroke you draw appears again around a centre point, turned and mirrored, so a few strokes become a mandala, a snowflake or a flower.
+**draw one stroke, get a mandala.**
+
+Every pencil stroke you finish comes back around a centre point, turned and mirrored like a real kaleidoscope. A few squiggles become a snowflake, a flower or a mandala in seconds ✧
 
 ![Turning Kaleidoscope on, drawing a few pencil strokes that are copied around the centre in 6 mirrored segments, then switching to 12 segments.](https://raw.githubusercontent.com/mickyngub/drawdy-kaleidoscope/main/docs/media/kaleidoscope.gif)
 
-## What it's for
+---
 
-- **Mandalas and rosettes** in a handful of strokes.
-- **Snowflakes, flowers and stars** for a card, a slide or a drawing session with kids.
-- **Symmetric doodles** while you think on a call.
+## let's draw ٩(◕‿◕)۶
 
-## How to use
+1. Click the **flower** in the extension rail.
+2. A bar opens just below Drawdy's toolbar, and dashed guide lines fan out from the middle of your view. Pick **2**, **3**, **4**, **6**, **8** or **12** segments.
+3. Pick the **Pencil** and draw. Every stroke you finish is copied into each segment; collaborators' strokes are left alone.
+4. Click **Stop** or press **Escape** when you're done.
 
-1. Click the **Kaleidoscope** button on the right of the board.
-2. A bar appears at the top of the screen, just below Drawdy's toolbar, with **2**, **3**, **4**, **6**, **8**, **12**, **Mirror**, **Recentre** and **Stop**. Dashed guide lines show the segments around the middle of your view.
-3. Pick the **Pencil** and draw. Each stroke you finish is copied into every segment.
-4. Click **Stop** or press Escape to turn it off. Clicking the **Kaleidoscope** button again does the same.
+> (・_・;) **why did undo leave the stroke?** The first ⌘Z takes away all its copies; the next takes the stroke itself.
 
-## Options
+---
 
-- **Segments**: 2, 3, 4, 6, 8 or 12 copies around the centre. The first time, it uses 6.
-- **Mirror**: also adds every copy reflected, like a real kaleidoscope. It is on the first time.
-- **Recentre**: moves the centre to the middle of your view. Pan and zoom first, then click it.
-- **Guide lines**: one dashed line per segment from the centre, with a small circle at the centre. Only you see them, and they go away when you turn it off.
+## make it yours (｡•̀ᴗ-)✧
 
-## Tips
+- **Segments**: 2, 3, 4, 6, 8 or 12 copies around the centre, 6 to start.
+- **Mirror**: adds every copy flipped as well, like a real kaleidoscope. It starts on.
+- **Recentre**: moves the centre to the middle of your view, so pan first, then click.
+- **Guide lines**: dashed spokes and a small ring at the centre, on your screen only. They go when you stop.
 
-- One ⌘Z or Ctrl+Z takes away all the copies of your last stroke; a second takes away the stroke itself.
-- A single click with the Pencil makes a dot, and the dot is copied too.
-- Only your own Pencil strokes are copied. Collaborators' strokes, pasted strokes and undo or redo are left alone.
-- The copies keep your stroke's colour, width and opacity, and the default ink keeps following the board theme in light and dark.
-- Textured pencil strokes are copied without their texture.
+---
 
-## Privacy
+## little things to try (っ˘ω˘ς )
 
-- Nothing leaves your board: the extension makes no network requests, and the copies are ordinary strokes on it.
-- Your last segments and Mirror choice are saved in this browser for next time.
+- A snowflake: 6 segments with **Mirror**, then short zigzags from the centre outwards.
+- A flower: 8 segments, one petal-shaped loop, then a dot in the middle.
+- A mandala for a card: start on **12** near the centre, then switch to **6** for the outer petals.
+- Pan to an empty spot and click **Recentre** for a second pattern beside the first.
 
-## Credits and licence
+---
 
-- The extension's code is [MIT](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/LICENSE). Building it yourself? See [DEVELOPMENT.md](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/DEVELOPMENT.md).
+**the small print**: nothing downloads, and nothing you draw leaves your board; the copies are ordinary strokes everyone sees, in your colour, width and opacity, and the default ink keeps following the board theme. Your segments and **Mirror** choice stay in this browser. Textured pencil strokes are copied without their texture. Code [MIT](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/LICENSE); building it yourself? See [DEVELOPMENT.md](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/DEVELOPMENT.md).
