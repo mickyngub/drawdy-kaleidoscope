@@ -40,10 +40,14 @@ export const overlaps = (a: Rect, b: Rect): boolean =>
     a.y < b.y + b.height &&
     b.y < a.y + a.height;
 
-/** Points as the host reports them: pairs, whatever shape the element was added with. */
+/** Points as the host reports them: pairs, whatever shape the element was added with; lines are [from, to, ...bend]. */
 export function pointsOf(el: Stored): [number, number][] {
     if (Array.isArray(el.from) && Array.isArray(el.to)) {
-        return [el.from as [number, number], el.to as [number, number]];
+        return [
+            el.from as [number, number],
+            el.to as [number, number],
+            ...((el.bend as [number, number][] | undefined) ?? []),
+        ];
     }
     if (Array.isArray(el.points)) {
         const flat = el.points as number[];
@@ -319,12 +323,13 @@ export function schemaNodes(schema: DomElementSchema): DomElementSchema[] {
 export async function boot(
     module: DriverModule,
     host: FakeHost,
-    manifest: DriverManifest
+    manifest: DriverManifest,
+    styling: Record<string, string> = { theme: "light" }
 ) {
     await module.activate({
         manifest,
         issueCommand: host.issueCommand,
-        styling: { theme: "light" } as any,
+        styling: styling as any,
         generateId: host.nextId,
     });
     const message = (body: Record<string, unknown>) =>

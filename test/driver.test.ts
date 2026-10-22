@@ -34,9 +34,11 @@ const STROKE: Stored = {
 
 type Emit = Awaited<ReturnType<typeof boot>>["emit"];
 
+const STYLING = { theme: "light", primary: "#2563eb" };
+
 async function started(options: Parameters<typeof fakeHost>[0] = {}) {
     const host = fakeHost(options);
-    const { emit } = await boot(driver, host, manifest);
+    const { emit } = await boot(driver, host, manifest, STYLING);
     await click(emit, BUTTON);
     return { host, emit };
 }
@@ -115,6 +117,15 @@ const sizeOf = (host: FakeHost) => {
     };
 };
 
+const highlighted = (host: FakeHost) =>
+    schemaNodes(host.floating.get(BAR)?.schema ?? { type: "box" })
+        .filter(
+            (node) =>
+                node.type === "button" &&
+                node.styles?.backgroundColor === STYLING.primary
+        )
+        .map((node) => node.domId);
+
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 test("turning the mode on switches to the Pencil, puts the bar at the bottom centre, draws the guides and watches strokes", async () => {
@@ -132,11 +143,11 @@ test("turning the mode on switches to the Pencil, puts the bar at the bottom cen
         width <= 1024 - 2 * 240,
         "at 1024 px wide the bar stays clear of Drawdy's corner controls"
     );
-    assert.ok(
-        schemaNodes(bar.schema).some(
-            (node) => node.type === "text" && node.domId === `${BAR}:hint`
-        )
-    );
+    assert.deepEqual(highlighted(host), [
+        barButton("pencil"),
+        barButton("6"),
+        barButton("mirror"),
+    ]);
     const switched = host.sent.find(
         (s) => s.type === "command:tools:set-active"
     );
@@ -348,20 +359,53 @@ test("a window resize moves the bar to the new bottom centre", async () => {
     await escape(emit);
 });
 
-test("off the Pencil, the bar holds a pencil notice until the Pencil is back", async (t) => {
+test("the tool buttons switch Drawdy's tool and highlight the choice at once", async () => {
+    const { host, emit } = await started();
+    for (const tool of ["line", "arrow", "pencil"]) {
+        host.clear();
+        await click(emit, barButton(tool));
+        assert.deepEqual(
+            host.sent.find((s) => s.type === "command:tools:set-active")?.req,
+            { toolId: tool }
+        );
+        assert.ok(highlighted(host).includes(barButton(tool)));
+        assert.equal(
+            highlighted(host).filter((id) =>
+                ["pencil", "line", "arrow"].some((t) => id === barButton(t))
+            ).length,
+            1
+        );
+    }
+    await escape(emit);
+});
+
+test("the poll keeps the tool highlight in sync with Drawdy's toolbar", async (t) => {
     t.mock.timers.enable({ apis: ["setInterval"] });
     const { host, emit } = await started();
-    host.setTool("rect");
+    host.setTool("arrow");
     t.mock.timers.tick(1000);
     await settle();
-    assert.deepEqual(noticeKeys(host), [barNotice("pencil")]);
+    assert.ok(highlighted(host).includes(barButton("arrow")));
+    assert.ok(!highlighted(host).includes(barButton("pencil")));
+    await escape(emit);
+});
+
+test("an unsupported drawing tool holds the tool notice; select and eraser never do", async (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const { host, emit } = await started();
+    const noticeFor = async (tool: string) => {
+        host.setTool(tool);
+        t.mock.timers.tick(1000);
+        await settle();
+        return noticeKeys(host);
+    };
+    assert.deepEqual(await noticeFor("rect"), [barNotice("tool")]);
     const { height } = sizeOf(host);
     assert.equal(host.floating.get(BAR)?.position.y, 1000 - height - 24);
-
-    host.setTool("pencil");
-    t.mock.timers.tick(1000);
-    await settle();
-    assert.deepEqual(noticeKeys(host), []);
+    assert.deepEqual(await noticeFor("select"), []);
+    assert.deepEqual(await noticeFor("text"), [barNotice("tool")]);
+    assert.deepEqual(await noticeFor("eraser"), []);
+    assert.deepEqual(await noticeFor("line"), []);
     await escape(emit);
 });
 
@@ -375,4 +419,153 @@ test("stopping ends the tool poll", async (t) => {
     await settle();
     assert.ok(!host.types().includes("command:tools:get-active"));
     assert.ok(!host.floating.has(BAR));
+});
+
+const LINE: Stored = {
+    drawdyElementId: "l1",
+    type: "path",
+    points: [900, 500, 1000, 450],
+    strokeColor: "#ef4444",
+    strokeWidth: 3,
+    strokeDash: "dashed",
+    opacity: 0.9,
+    layer: 2,
+    roughness: 1,
+    seed: 42,
+};
+
+const ELBOW: Stored = {
+    ...LINE,
+    drawdyElementId: "e1",
+    points: [900, 500, 950, 500, 950, 580, 1000, 580],
+};
+
+// Long enough without pointer moves that the next one starts a new burst.
+const pause = () => new Promise((resolve) => setTimeout(resolve, 170));
+
+/** The local user dragging a line or arrow: the pointer moves with the tool active, Drawdy commits, then selects it on Select. */
+async function drawPath(
+    host: FakeHost,
+    emit: Emit,
+    tool: string,
+    el: Stored = LINE,
+    { select = true }: { select?: boolean } = {}
+) {
+    await pause();
+    host.setTool(tool);
+    const [[x0, y0], [x1, y1]] = pointsOf(el);
+    await pointerAt(emit, x0, y0);
+    await pointerAt(emit, x1, y1);
+    host.setTool("select");
+    host.put({ ...el });
+    await emit("subscription:scene:elements-added", {
+        drawdyElements: [
+            { id: el.drawdyElementId, type: "path", points: pointsOf(el) },
+        ],
+        properties: ["type", "componentType", "points", "meta"],
+    });
+    if (select) {
+        await emit("subscription:scene:drawdy-element-selection", {
+            drawdyElementIds: [el.drawdyElementId],
+        });
+    }
+}
+
+const lineCopiesOf = (host: FakeHost, id: string) =>
+    [...host.elements.values()].filter(
+        (el) => (el.meta as any)?.[manifest.driverId]?.of === id
+    );
+
+test("a line is copied when Drawdy selects it right after the add; a remote one is not", async () => {
+    const { host, emit } = await started();
+    await drawPath(host, emit, "line", LINE, { select: false });
+    assert.equal(adds(host).length, 0);
+
+    await drawPath(host, emit, "line", { ...LINE, drawdyElementId: "l2" });
+    assert.equal(adds(host).length, 1);
+    const made = lineCopiesOf(host, "l2");
+    assert.equal(made.length, 11);
+    assert.ok(made.every((el) => el.type === "line"));
+    await escape(emit);
+});
+
+test("an arrow at 6 segments with Mirror gives 11 arrows whose ends are the originals turned about the centre", async () => {
+    const { host, emit } = await started();
+    await drawPath(host, emit, "arrow");
+    const made = lineCopiesOf(host, "l1");
+    assert.equal(made.length, 11);
+    const radius = ([x, y]: [number, number]) => Math.hypot(x - 800, y - 500);
+    for (const el of made) {
+        assert.equal(el.type, "arrow");
+        assert.ok(Math.abs(radius(el.from as [number, number]) - 100) < 1e-9);
+        assert.ok(
+            Math.abs(radius(el.to as [number, number]) - Math.hypot(200, 50)) <
+                1e-9
+        );
+        assert.equal(el.color, "#ef4444");
+        assert.equal(el.strokeDash, "dashed");
+        assert.equal(el.roughness, 1);
+        assert.equal(el.seed, 42);
+    }
+    const sixty = Math.PI / 3;
+    const [first] = made;
+    assert.ok(
+        Math.abs((first.from as number[])[0] - (800 + 100 * Math.cos(sixty))) <
+            1e-9
+    );
+    assert.ok(
+        Math.abs((first.from as number[])[1] - (500 + 100 * Math.sin(sixty))) <
+            1e-9
+    );
+    await escape(emit);
+});
+
+test("an elbow arrow is skipped with a notice at 6 segments and copied at 4", async () => {
+    const { host, emit } = await started();
+    await drawPath(host, emit, "arrow", ELBOW);
+    assert.equal(adds(host).length, 0);
+    assert.deepEqual(noticeKeys(host), [barNotice("elbow")]);
+
+    await click(emit, barButton("4"));
+    await drawPath(host, emit, "arrow", { ...ELBOW, drawdyElementId: "e2" });
+    const made = lineCopiesOf(host, "e2");
+    assert.equal(made.length, 7);
+    assert.ok(made.every((el) => el.elbowRouting === true));
+    await escape(emit);
+});
+
+test("the tool seen as the drag starts decides line or arrow, even after Drawdy switches to Select", async (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const { host, emit } = await started();
+    await drawPath(host, emit, "line", { ...LINE, drawdyElementId: "p1" });
+    assert.ok(lineCopiesOf(host, "p1").every((el) => el.type === "line"));
+
+    await drawPath(host, emit, "arrow", { ...LINE, drawdyElementId: "p2" });
+    assert.ok(lineCopiesOf(host, "p2").every((el) => el.type === "arrow"));
+
+    await pause();
+    host.setTool("line");
+    await pointerAt(emit, 900, 500);
+    host.setTool("select");
+    t.mock.timers.tick(1000);
+    await settle();
+    host.put({ ...LINE, drawdyElementId: "p3" });
+    await emit("subscription:scene:elements-added", {
+        drawdyElements: [{ id: "p3", type: "path", points: pointsOf(LINE) }],
+        properties: ["type", "componentType", "points", "meta"],
+    });
+    await emit("subscription:scene:drawdy-element-selection", {
+        drawdyElementIds: ["p3"],
+    });
+    const p3 = lineCopiesOf(host, "p3");
+    assert.equal(p3.length, 11);
+    assert.ok(p3.every((el) => el.type === "line"));
+    await escape(emit);
+});
+
+test("a line pasted on Select is not copied even though Drawdy selects it", async () => {
+    const { host, emit } = await started();
+    await drawPath(host, emit, "select");
+    assert.equal(adds(host).length, 0);
+    await escape(emit);
 });

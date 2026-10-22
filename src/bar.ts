@@ -4,117 +4,127 @@ import type {
     ModuleStyling,
 } from "@drawdy/driver-protocol";
 
-export type BarChoice = { key: string; label: string };
+export type BarChoice = {
+    key: string;
+    label: string;
+    icon?: (colour: string) => string;
+};
 
 export type BarNotice = { key: string; text: string };
 
-export type BarHint = { text: string; width: number };
-
-export type BarLook = {
-    driverId: string;
-    styling: ModuleStyling;
-    hint?: BarHint;
-};
+export type BarLook = { driverId: string; styling: ModuleStyling };
 
 // Bottom centre keeps clear of Drawdy's toolbar and its tooltips at the top and of its corner controls.
 export const BAR_BOTTOM_GAP = 24;
 export const NOTICE_MS = 3000;
 
-const PADDING = 6;
+const PADDING = 4;
 const BORDER = 1;
 const GAP = 4;
-const BUTTON_HEIGHT = 28;
+const BUTTON = 32;
+const ICON = 16;
+const RADIUS = 8;
+const DIVIDER_HEIGHT = 20;
 const NOTICE_HEIGHT = 16;
-const MIN_BUTTON = 32;
 const LABEL_CHAR_PX = 7.5;
-const LABEL_PADDING = 20;
+const LABEL_PADDING = 16;
 
 export const barId = (driverId: string): string => `${driverId}:bar`;
 
 export const barButtonId = (driverId: string, key: string): string =>
     `${driverId}:bar:${key}`;
 
-export const barHintId = (driverId: string): string => `${driverId}:bar:hint`;
-
 export const barNoticeId = (driverId: string, key: string): string =>
     `${driverId}:bar:notice:${key}`;
 
-const buttonWidth = (label: string): number =>
-    Math.max(
-        MIN_BUTTON,
-        Math.round(LABEL_PADDING + label.length * LABEL_CHAR_PX)
-    );
+const buttonWidth = (c: BarChoice): number =>
+    c.icon
+        ? BUTTON
+        : Math.max(
+              BUTTON,
+              Math.round(LABEL_PADDING + c.label.length * LABEL_CHAR_PX)
+          );
 
 // A floating element is placed by its top-left corner, so the bar's size is fixed here rather than measured.
-export const barWidth = (
-    choices: readonly BarChoice[],
-    hint?: BarHint
-): number => {
-    const items = choices.map((c) => buttonWidth(c.label));
-    if (hint) items.push(hint.width);
+export const barWidth = (groups: readonly (readonly BarChoice[])[]): number => {
+    const buttons = groups.flat();
+    const dividers = Math.max(0, groups.length - 1);
+    const items = buttons.length + dividers;
     return (
         2 * (PADDING + BORDER) +
-        items.reduce((sum, w) => sum + w, 0) +
-        GAP * Math.max(0, items.length - 1)
+        buttons.reduce((sum, c) => sum + buttonWidth(c), 0) +
+        dividers +
+        GAP * Math.max(0, items - 1)
     );
 };
 
 export const barHeight = (withNotice: boolean): number =>
-    2 * (PADDING + BORDER) +
-    BUTTON_HEIGHT +
-    (withNotice ? GAP + NOTICE_HEIGHT : 0);
+    2 * (PADDING + BORDER) + BUTTON + (withNotice ? GAP + NOTICE_HEIGHT : 0);
+
+function button(look: BarLook, c: BarChoice, on: boolean): DomElementSchema {
+    const { styling } = look;
+    const ink = on ? styling.primaryForeground : styling.foreground;
+    return {
+        type: "button",
+        domId: barButtonId(look.driverId, c.key),
+        styles: {
+            width: [buttonWidth(c), "px"],
+            height: [BUTTON, "px"],
+            borderRadius: [RADIUS, "px"],
+            backgroundColor: on ? styling.primary : "transparent",
+            cursor: "pointer",
+            ...(c.icon && { padding: [(BUTTON - ICON) / 2, "px"] }),
+            ...(on ? {} : { hover: { backgroundColor: styling.surface2 } }),
+        },
+        children: [
+            c.icon
+                ? {
+                      type: "image",
+                      child: c.icon(ink),
+                      styles: {
+                          width: [ICON, "px"],
+                          height: [ICON, "px"],
+                          pointerEvents: "none",
+                      },
+                  }
+                : {
+                      type: "text",
+                      child: c.label,
+                      styles: {
+                          color: ink,
+                          fontSize: [13, "px"],
+                          fontWeight: "medium",
+                          textAlign: "center",
+                      },
+                  },
+        ],
+    };
+}
 
 export function barSchema(
     look: BarLook,
-    choices: readonly BarChoice[],
+    groups: readonly (readonly BarChoice[])[],
     active: readonly string[],
     notice?: BarNotice
 ): DomElementSchema {
-    const { driverId, styling, hint } = look;
-    const width = barWidth(choices, hint);
-    const items: DomElementSchema[] = choices.map((c) => {
-        const on = active.includes(c.key);
-        return {
-            type: "button",
-            domId: barButtonId(driverId, c.key),
-            styles: {
-                width: [buttonWidth(c.label), "px"],
-                height: [BUTTON_HEIGHT, "px"],
-                borderRadius: [6, "px"],
-                backgroundColor: on ? styling.primary : "transparent",
-                cursor: "pointer",
-                ...(on ? {} : { hover: { backgroundColor: styling.surface2 } }),
-            },
-            children: [
-                {
-                    type: "text",
-                    child: c.label,
-                    styles: {
-                        color: on
-                            ? styling.primaryForeground
-                            : styling.foreground,
-                        fontSize: [13, "px"],
-                        fontWeight: "medium",
-                        textAlign: "center",
-                    },
+    const { driverId, styling } = look;
+    const width = barWidth(groups);
+    const items: DomElementSchema[] = [];
+    groups.forEach((group, i) => {
+        if (i > 0) {
+            items.push({
+                type: "box",
+                styles: {
+                    width: [1, "px"],
+                    height: [DIVIDER_HEIGHT, "px"],
+                    backgroundColor: styling.border,
                 },
-            ],
-        };
+            });
+        }
+        for (const c of group) {
+            items.push(button(look, c, active.includes(c.key)));
+        }
     });
-    if (hint) {
-        items.unshift({
-            type: "text",
-            domId: barHintId(driverId),
-            child: hint.text,
-            styles: {
-                width: [hint.width, "px"],
-                color: styling.mutedForeground,
-                fontSize: [12, "px"],
-                fontWeight: "medium",
-                textAlign: "center",
-            },
-        });
-    }
     const children: DomElementSchema[] = [
         {
             type: "row",
@@ -147,7 +157,7 @@ export function barSchema(
             backgroundColor: styling.surface,
             borderColor: styling.border,
             borderWidth: [BORDER, "px"],
-            borderRadius: [10, "px"],
+            borderRadius: [RADIUS + PADDING, "px"],
             pointerEvents: "auto",
             crossAxisAlignment: "center",
         },
@@ -172,13 +182,13 @@ export type Bar = {
 export function createBar(o: {
     issue: DriverCommandIssuer;
     driverId: string;
-    choices: readonly BarChoice[];
-    hint?: BarHint;
+    groups: readonly (readonly BarChoice[])[];
     styling: ModuleStyling;
     requestId: () => string;
     log: (message: string, err: unknown) => void;
 }): Bar {
-    const { issue, driverId, choices, hint } = o;
+    const { issue, driverId, groups } = o;
+    const choices = groups.flat();
     const domId = barId(driverId);
     const stamp = () => ({ driverId, requestId: o.requestId() });
     let styling = o.styling;
@@ -195,10 +205,7 @@ export function createBar(o: {
     const position = () => {
         const size = windowSize ?? { width: 0, height: 0 };
         return {
-            x: Math.max(
-                0,
-                Math.round((size.width - barWidth(choices, hint)) / 2)
-            ),
+            x: Math.max(0, Math.round((size.width - barWidth(groups)) / 2)),
             y: Math.max(
                 0,
                 size.height - barHeight(shownNotice() !== null) - BAR_BOTTOM_GAP
@@ -226,8 +233,8 @@ export function createBar(o: {
         }
         if (!wanted) return;
         const schema = barSchema(
-            { driverId, styling, hint },
-            choices,
+            { driverId, styling },
+            groups,
             wanted.active,
             shownNotice() ?? undefined
         );

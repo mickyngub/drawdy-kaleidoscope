@@ -7,7 +7,13 @@ import type {
 } from "@drawdy/driver-protocol";
 import { createBar, type Bar, type BarChoice } from "./bar";
 import { guideElements } from "./guides";
-import { createStrokeWatch, type StrokeWatch } from "./lib/stroke-watch";
+import { ARROW_ICON, LINE_ICON, PENCIL_ICON } from "./icons";
+import { lineCopies, type LineStroke } from "./lib/lines";
+import {
+    createStrokeWatch,
+    type Candidate,
+    type StrokeWatch,
+} from "./lib/stroke-watch";
 import {
     SEGMENT_CHOICES,
     isSegments,
@@ -25,7 +31,22 @@ const BUTTON_RETRIES_MS = [800, 2000, 4000, 8000, 15000];
 const SETTINGS_KEY = "settings";
 const FRAME_ATTACH_MS = 120;
 const DEFAULT_SETTINGS: Settings = { segments: 6, mirror: true };
-const ADDED_PROPERTIES: SubscribeableKey[] = ["type", "points", "meta"];
+const ADDED_PROPERTIES: SubscribeableKey[] = [
+    "type",
+    "componentType",
+    "points",
+    "meta",
+];
+const LINE_PROPERTIES: SubscribeableKey[] = [
+    "points",
+    "strokeColor",
+    "strokeWidth",
+    "strokeDash",
+    "opacity",
+    "layer",
+    "roughness",
+    "seed",
+];
 const STROKE_PROPERTIES: SubscribeableKey[] = [
     "points",
     "strokeColor",
@@ -39,16 +60,38 @@ export const NEEDS_PERMISSION = "Needs board permission";
 export const BOARD_FULL =
     "The board is full (10,000 elements), so no copies were added";
 export const ADD_FAILED = "The board would not take the copies";
-export const PICK_PENCIL = "Pick the Pencil to mirror your strokes";
+export const UNSUPPORTED_TOOL =
+    "Kaleidoscope mirrors the Pencil, Line and Arrow";
 
-const PENCIL_POLL_MS = 1000;
-const HINT = { text: "✏️ Pencil only", width: 96 };
+export const ELBOW_SEGMENTS_ONLY = "Elbow arrows mirror at 2 or 4 segments";
 
-const CHOICES: BarChoice[] = [
-    ...SEGMENT_CHOICES.map((n) => ({ key: String(n), label: String(n) })),
-    { key: "mirror", label: "Mirror" },
-    { key: "recentre", label: "Recentre" },
-    { key: "stop", label: "Stop" },
+const TOOL_POLL_MS = 1000;
+const BURST_GAP_MS = 150;
+const TOOL_RECHECK_MS = 200;
+const TOOLS = ["pencil", "line", "arrow"];
+// Drawing tools whose marks are never mirrored; select, drag, eraser and the laser stay quiet.
+const UNSUPPORTED_TOOLS = new Set([
+    "rect",
+    "circle",
+    "diamond",
+    "text",
+    "sticky-note",
+    "image",
+    "frame",
+]);
+
+const GROUPS: BarChoice[][] = [
+    [
+        { key: "pencil", label: "Pencil", icon: PENCIL_ICON },
+        { key: "line", label: "Line", icon: LINE_ICON },
+        { key: "arrow", label: "Arrow", icon: ARROW_ICON },
+    ],
+    SEGMENT_CHOICES.map((n) => ({ key: String(n), label: String(n) })),
+    [{ key: "mirror", label: "Mirror" }],
+    [
+        { key: "recentre", label: "Recentre" },
+        { key: "stop", label: "Stop" },
+    ],
 ];
 
 type Settings = { segments: Segments; mirror: boolean };
@@ -61,6 +104,10 @@ type Mode = {
     queue: Promise<void>;
     poll: ReturnType<typeof setInterval>;
     polling: boolean;
+    recheck: boolean;
+    tool: string | null;
+    pointerAt: number;
+    toolCheckedAt: number;
 };
 
 type Rect = { x: number; y: number; width: number; height: number };
@@ -100,8 +147,11 @@ const serial = (task: () => Promise<void>): Promise<void> => {
     return control;
 };
 
-const activeKeys = (s: Settings): string[] =>
-    s.mirror ? [String(s.segments), "mirror"] : [String(s.segments)];
+const activeKeys = (s: Settings, tool: string | null): string[] => [
+    ...(tool !== null && TOOLS.includes(tool) ? [tool] : []),
+    String(s.segments),
+    ...(s.mirror ? ["mirror"] : []),
+];
 
 const centreOf = (rect: Rect): Point => ({
     x: rect.x + rect.width / 2,
@@ -209,6 +259,10 @@ async function start(): Promise<void> {
             ...stamp(),
             req: { properties: [] },
         }),
+        issue({
+            type: "subscription:scene:drawdy-element-selection",
+            ...stamp(),
+        }),
     ]);
     const subscriptions = subscribed.flatMap((res) =>
         res.res.value ? [res.res.value.subscriptionId] : []
@@ -221,25 +275,65 @@ async function start(): Promise<void> {
         queue: Promise.resolve(),
         poll: setInterval(() => {
             checkTool(active).catch((err) => log("tool check failed", err));
-        }, PENCIL_POLL_MS),
+        }, TOOL_POLL_MS),
         polling: false,
+        recheck: false,
+        tool: "pencil",
+        pointerAt: -Infinity,
+        toolCheckedAt: -Infinity,
     };
+    active.watch.onTool("pencil", performance.now());
     mode = active;
-    await bar.show(activeKeys(s));
+    await bar.show(activeKeys(s, active.tool));
 }
 
-// Drawdy announces no tool changes, so the hint is kept honest by asking.
+async function showTool(active: Mode, tool: string | null): Promise<void> {
+    const highlightChanged =
+        TOOLS.includes(tool ?? "") || TOOLS.includes(active.tool ?? "");
+    const changed = tool !== active.tool;
+    active.tool = tool;
+    if (changed && highlightChanged) {
+        await bar.show(activeKeys(await loadSettings(), tool));
+    }
+    await (tool !== null && UNSUPPORTED_TOOLS.has(tool)
+        ? bar.hold({ key: "tool", text: UNSUPPORTED_TOOL })
+        : bar.release("tool"));
+}
+
+// Drawdy announces no tool changes, so the highlight, the notice and the
+// line-or-arrow decision all rest on asking; a check asked for mid-flight runs again after.
 async function checkTool(active: Mode): Promise<void> {
-    if (active.polling || mode !== active) return;
+    if (mode !== active) return;
+    if (active.polling) {
+        active.recheck = true;
+        return;
+    }
     active.polling = true;
     try {
-        const onPencil = (await activeTool()) === "pencil";
-        if (mode !== active) return;
-        await (onPencil
-            ? bar.release("pencil")
-            : bar.hold({ key: "pencil", text: PICK_PENCIL }));
+        do {
+            active.recheck = false;
+            active.toolCheckedAt = performance.now();
+            const tool = await activeTool();
+            if (mode !== active) return;
+            active.watch.onTool(tool, performance.now());
+            await showTool(active, tool);
+        } while (active.recheck && mode === active);
     } finally {
         active.polling = false;
+    }
+}
+
+// A line takes its tool from the drag that drew it, so the tool is asked for as a pointer burst starts and while it moves.
+async function onPointerMoved(
+    active: Mode,
+    at: { x: number; y: number }
+): Promise<void> {
+    const now = performance.now();
+    active.watch.onPointer(at, now);
+    const burst = now - active.pointerAt >= BURST_GAP_MS;
+    active.pointerAt = now;
+    if (burst || now - active.toolCheckedAt >= TOOL_RECHECK_MS) {
+        await checkTool(active);
     }
 }
 
@@ -284,10 +378,20 @@ async function choose(key: string): Promise<void> {
         await rebuildGuides(active);
         return;
     }
+    if (TOOLS.includes(key)) {
+        await issue({
+            type: "command:tools:set-active",
+            ...stamp(),
+            req: { toolId: key },
+        });
+        active.watch.onTool(key, performance.now());
+        await showTool(active, key);
+        return;
+    }
     if (key === "mirror") {
         const next = { ...current, mirror: !current.mirror };
         active.sym = { ...active.sym, mirror: next.mirror };
-        await bar.show(activeKeys(next));
+        await bar.show(activeKeys(next, active.tool));
         await saveSettings(next);
         return;
     }
@@ -295,7 +399,7 @@ async function choose(key: string): Promise<void> {
     if (!isSegments(segments) || segments === current.segments) return;
     const next = { ...current, segments };
     active.sym = { ...active.sym, segments };
-    await bar.show(activeKeys(next));
+    await bar.show(activeKeys(next, active.tool));
     await rebuildGuides(active);
     await saveSettings(next);
 }
@@ -340,25 +444,17 @@ function copyOf(
     };
 }
 
-async function copyStroke(
+async function addCopies(
     active: Mode,
-    id: string,
-    tool: Promise<string | null>
+    elements: DrawdyElementSchema[]
 ): Promise<void> {
-    if ((await tool) !== "pencil") return;
-    await sleep(FRAME_ATTACH_MS);
-    if (mode !== active) return;
-    const stroke = await readStroke(id);
-    if (mode !== active || !stroke?.points || stroke.points.length < 2) return;
-    const copies = symmetryCopies(stroke.points, active.sym);
-    const ids = copies.map(() => generateId());
+    if (elements.length === 0) return;
+    const ids = elements.map((el) => el.drawdyElementId);
     active.watch.markSeen(ids);
     const added = await issue({
         type: "command:scene:add-drawdy-elements",
         ...stamp(),
-        req: {
-            elements: copies.map((points, i) => copyOf(ids[i], points, stroke)),
-        },
+        req: { elements },
     });
     if (added.res.error !== undefined) {
         await bar.notice(
@@ -379,6 +475,82 @@ async function copyStroke(
     }
 }
 
+async function copyStroke(
+    active: Mode,
+    id: string,
+    tool: Promise<string | null>
+): Promise<void> {
+    if ((await tool) !== "pencil") return;
+    await sleep(FRAME_ATTACH_MS);
+    if (mode !== active) return;
+    const stroke = await readStroke(id);
+    if (mode !== active || !stroke?.points || stroke.points.length < 2) return;
+    await addCopies(
+        active,
+        symmetryCopies(stroke.points, active.sym).map((points) =>
+            copyOf(generateId(), points, stroke)
+        )
+    );
+}
+
+async function readLine(
+    id: string,
+    kind: LineStroke["kind"]
+): Promise<LineStroke | null> {
+    const res = await issue({
+        type: "command:scene:get-drawdy-elements",
+        ...stamp(),
+        req: { properties: LINE_PROPERTIES, drawdyElementIds: [id] },
+    });
+    if (res.res.error !== undefined) return null;
+    const el = res.res.value.drawdyElements[0];
+    if (!el?.points || el.points.length < 2) return null;
+    return {
+        id,
+        kind,
+        points: el.points,
+        color: el.strokeColor,
+        strokeWidth: el.strokeWidth,
+        strokeDash: el.strokeDash,
+        opacity: el.opacity,
+        layer: el.layer,
+        roughness: el.roughness,
+        seed: el.seed,
+    };
+}
+
+async function copyLine(
+    active: Mode,
+    id: string,
+    kind: LineStroke["kind"]
+): Promise<void> {
+    const line = await readLine(id, kind);
+    if (mode !== active || !line) return;
+    const copies = lineCopies(line, active.sym, generateId, {
+        [driverId]: { v: 1, of: id },
+    });
+    if (copies === null) {
+        await bar.notice({ key: "elbow", text: ELBOW_SEGMENTS_ONLY });
+        return;
+    }
+    await addCopies(active, copies);
+}
+
+async function copyCandidate(active: Mode, c: Candidate): Promise<void> {
+    const { id, kind } = c;
+    let task: () => Promise<void>;
+    if (kind === "freedraw") {
+        const tool = activeTool();
+        task = () => copyStroke(active, id, tool);
+    } else {
+        task = () => copyLine(active, id, kind);
+    }
+    active.queue = active.queue
+        .then(task)
+        .catch((err) => log("copying a stroke failed", err));
+    await active.queue;
+}
+
 async function onElementsAdded(
     added: readonly SubscribedDrawdyElement[]
 ): Promise<void> {
@@ -387,13 +559,8 @@ async function onElementsAdded(
     const now = performance.now();
     const zoom = await currentZoom();
     if (mode !== active) return;
-    const id = active.watch.candidate(added, now, zoom);
-    if (id === null) return;
-    const tool = activeTool();
-    active.queue = active.queue
-        .then(() => copyStroke(active, id, tool))
-        .catch((err) => log("copying a stroke failed", err));
-    await active.queue;
+    const c = active.watch.candidate(added, now, zoom);
+    if (c) await copyCandidate(active, c);
 }
 
 const installButton = async (attempt: number): Promise<void> => {
@@ -433,8 +600,7 @@ export const activate: DriverModule["activate"] = async (ctx) => {
     bar = createBar({
         issue,
         driverId,
-        choices: CHOICES,
-        hint: HINT,
+        groups: GROUPS,
         styling: ctx.styling,
         requestId: () => String(seq++),
         log,
@@ -471,10 +637,18 @@ export const onEvent: DriverModule["onEvent"] = async (event) => {
                 return;
             }
             case "subscription:scene:pointer-position": {
-                mode?.watch.onPointer(
-                    event.body.position.canvasSpace,
+                if (mode) {
+                    await onPointerMoved(mode, event.body.position.canvasSpace);
+                }
+                return;
+            }
+            case "subscription:scene:drawdy-element-selection": {
+                const active = mode;
+                const c = active?.watch.onSelection(
+                    event.body.drawdyElementIds,
                     performance.now()
                 );
+                if (active && c) await copyCandidate(active, c);
                 return;
             }
             case "subscription:scene:elements-added": {
