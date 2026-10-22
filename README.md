@@ -11,7 +11,7 @@ Every pencil stroke, line and arrow you finish comes back around a centre point,
 ## let's draw ٩(◕‿◕)۶
 
 1. Click the **flower** in the extension rail.
-2. A bar opens at the bottom of the screen and dashed guide lines fan out from the middle of your view. Pick **Pencil**, **Line** or **Arrow** in the bar, then **2**, **3**, **4**, **6**, **8** or **12** segments.
+2. A bar opens at the bottom of the screen and dashed guide lines fan out from the middle of your view. Pick the **Pencil**, **Line** or **Arrow** in Drawdy's toolbar; the bar lights up the one you're using. Then choose **2**, **3**, **4**, **6**, **8** or **12** segments.
 3. Draw. Everything you finish is copied into each segment; collaborators' drawings are left alone.
 4. Click **Stop** or press **Escape** when you're done.
 
@@ -37,4 +37,4 @@ Every pencil stroke, line and arrow you finish comes back around a centre point,
 
 ---
 
-**the small print**: nothing downloads, and nothing you draw leaves your board; the copies are ordinary strokes everyone sees, in your colour, width, dash and opacity, and the default ink keeps following the board theme. Your segments and **Mirror** choice stay in this browser. Textured pencil strokes are copied without their texture, arrow copies get Drawdy's standard arrowhead, and elbow arrows are mirrored at 2 or 4 segments only. Bar icons from [Lucide](https://lucide.dev) (ISC). Code [MIT](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/LICENSE); building it yourself? See [DEVELOPMENT.md](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/DEVELOPMENT.md).
+**the small print**: nothing downloads, and nothing you draw leaves your board; the copies are ordinary strokes everyone sees, in your colour, width, dash and opacity, and the default ink keeps following the board theme. Your segments and **Mirror** choice stay in this browser. Textured pencil strokes are copied without their texture, arrow copies get Drawdy's standard arrowhead, and elbow arrows aren't mirrored. Drawdy goes back to Select after each line or arrow, so pick **Line** or **Arrow** again for the next one. Bar icons from [Lucide](https://lucide.dev) (ISC). Code [MIT](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/LICENSE); building it yourself? See [DEVELOPMENT.md](https://github.com/mickyngub/drawdy-kaleidoscope/blob/main/DEVELOPMENT.md).

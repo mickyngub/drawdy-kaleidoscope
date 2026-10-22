@@ -8,6 +8,8 @@ export type BarChoice = {
     key: string;
     label: string;
     icon?: (colour: string) => string;
+    /** Shows state only: never clickable, lit like Drawdy's own toolbar. */
+    indicator?: boolean;
 };
 
 export type BarNotice = { key: string; text: string };
@@ -68,9 +70,9 @@ export const barWidth = (groups: readonly (readonly BarChoice[])[]): number => {
 export const barHeight = (withNotice: boolean): number =>
     2 * (PADDING + BORDER) + BUTTON + (withNotice ? GAP + NOTICE_HEIGHT : 0);
 
-// Tools mark the active one the way Drawdy's own toolbar does, a soft fill and
-// an underline, so they read apart from the lime settings beside them.
-function toolButton(
+// An indicator marks the active one the way Drawdy's own toolbar does, a soft
+// fill and an underline, so it reads apart from the lime settings beside it.
+function indicator(
     look: BarLook,
     c: BarChoice,
     icon: (colour: string) => string,
@@ -78,15 +80,13 @@ function toolButton(
 ): DomElementSchema {
     const { styling } = look;
     return {
-        type: "button",
+        type: "box",
         domId: barButtonId(look.driverId, c.key),
         styles: {
             width: [BUTTON, "px"],
             height: [BUTTON, "px"],
             borderRadius: [RADIUS, "px"],
             backgroundColor: on ? styling.surface2 : "transparent",
-            cursor: "pointer",
-            hover: { backgroundColor: styling.surface2 },
         },
         children: [
             {
@@ -95,7 +95,6 @@ function toolButton(
                     width: [BUTTON, "px"],
                     height: [BUTTON, "px"],
                     crossAxisAlignment: "center",
-                    pointerEvents: "none",
                 },
                 children: [
                     { type: "box", styles: { height: [ICON_TOP, "px"] } },
@@ -126,8 +125,8 @@ function toolButton(
     };
 }
 
-function button(look: BarLook, c: BarChoice, on: boolean): DomElementSchema {
-    if (c.icon) return toolButton(look, c, c.icon, on);
+function item(look: BarLook, c: BarChoice, on: boolean): DomElementSchema {
+    if (c.indicator && c.icon) return indicator(look, c, c.icon, on);
     const { styling } = look;
     return {
         type: "button",
@@ -175,8 +174,15 @@ export function barSchema(
                 },
             });
         }
-        for (const c of group) {
-            items.push(button(look, c, active.includes(c.key)));
+        const made = group.map((c) => item(look, c, active.includes(c.key)));
+        if (group.every((c) => c.indicator)) {
+            items.push({
+                type: "row",
+                children: made,
+                styles: { gap: GAP, pointerEvents: "none" },
+            });
+        } else {
+            items.push(...made);
         }
     });
     const children: DomElementSchema[] = [
@@ -222,7 +228,7 @@ export type Bar = {
     subscribe(): Promise<void>;
     keyOf(domElementId: string): string | null;
     show(active: readonly string[]): Promise<void>;
-    notice(notice: BarNotice): Promise<void>;
+    notice(notice: BarNotice, ms?: number): Promise<void>;
     hold(notice: BarNotice): Promise<void>;
     release(key: string): Promise<void>;
     resize(size: { width: number; height: number }): Promise<void>;
@@ -231,7 +237,7 @@ export type Bar = {
     readonly shown: boolean;
 };
 
-// notice() shows for NOTICE_MS; hold() stays until release(). A notice raised
+// notice() shows for NOTICE_MS unless told otherwise; hold() stays until release(). A notice raised
 // while the bar is hidden shows the bar on its own and takes it away again.
 export function createBar(o: {
     issue: DriverCommandIssuer;
@@ -242,7 +248,7 @@ export function createBar(o: {
     log: (message: string, err: unknown) => void;
 }): Bar {
     const { issue, driverId, groups } = o;
-    const choices = groups.flat();
+    const choices = groups.flat().filter((c) => !c.indicator);
     const domId = barId(driverId);
     const stamp = () => ({ driverId, requestId: o.requestId() });
     let styling = o.styling;
@@ -345,7 +351,7 @@ export function createBar(o: {
             wanted = { active: [...active], transient: false };
             return sync();
         },
-        notice(next) {
+        notice(next, ms = NOTICE_MS) {
             clearNotice();
             notice = next;
             if (!wanted) wanted = { active: [], transient: true };
@@ -354,7 +360,7 @@ export function createBar(o: {
                 notice = null;
                 if (wanted?.transient) wanted = null;
                 void sync();
-            }, NOTICE_MS);
+            }, ms);
             return sync();
         },
         hold(next) {

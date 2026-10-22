@@ -63,7 +63,6 @@ test("an arrow at 4 segments gives arrows rotated a quarter turn at a time, styl
         assert.equal(c.seed, 42);
         assert.deepEqual(c.meta, { tag: 1 });
         assert.equal(c.bend, undefined);
-        assert.equal(c.elbowRouting, undefined);
     });
 });
 
@@ -86,7 +85,7 @@ test("Drawdy's [from, to, ...bend] order is kept, so a bent line's bend turns wi
     assert.ok(close(half.bend![0], [-150, -30]));
 });
 
-test("an elbow arrow is copied from its ends with elbow routing at 2 or 4 segments, and skipped otherwise", () => {
+test("an elbow arrow gives no copies at any segment count", () => {
     const elbow: LineStroke = {
         ...arrow,
         points: [
@@ -98,21 +97,10 @@ test("an elbow arrow is copied from its ends with elbow routing at 2 or 4 segmen
     };
     assert.ok(isElbow(elbow.points));
     assert.ok(!isElbow(arrow.points));
-    assert.equal(
-        lineCopies(elbow, { segments: 6, mirror: true, centre }, ids(), {}),
-        null
-    );
-    const copies = lineCopies(
-        elbow,
-        { segments: 4, mirror: true, centre },
-        ids(),
-        {}
-    );
-    assert.equal(copies?.length, 7);
-    for (const c of copies ?? []) {
-        assert.equal(c.elbowRouting, true);
-        assert.equal(c.bend, undefined);
+    for (const segments of [2, 4, 6] as const) {
+        assert.equal(
+            lineCopies(elbow, { segments, mirror: true, centre }, ids(), {}),
+            null
+        );
     }
-    assert.ok(close(copies![0].from as [number, number], [0, 100]));
-    assert.ok(close(copies![0].to as [number, number], [-80, 200]));
 });

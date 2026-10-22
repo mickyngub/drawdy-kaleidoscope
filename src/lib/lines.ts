@@ -14,8 +14,6 @@ export type LineStroke = {
     seed?: number;
 };
 
-export const ELBOW_SEGMENTS: readonly number[] = [2, 4];
-
 const AXIS_EPSILON = 1e-6;
 
 // Elbow arrows store their route as corners, so every segment runs along an axis.
@@ -30,9 +28,9 @@ export const isElbow = (points: [number, number][]): boolean =>
         );
 
 /**
- * The rotated and mirrored copies of a line or arrow, or null for an elbow
- * arrow at a segment count whose turns would not stay on the axes. Drawdy
- * stores [from, to, ...bend] and re-routes an elbow arrow from its two ends.
+ * The rotated and mirrored copies of a line or arrow, in the [from, to, ...bend]
+ * order Drawdy stores. Elbow arrows give null: Drawdy re-routes them from their
+ * two ends, and the new route does not always turn the way the mirrored one would.
  */
 export function lineCopies(
     line: LineStroke,
@@ -40,12 +38,8 @@ export function lineCopies(
     newId: () => string,
     meta: Record<string, unknown>
 ): LineSchema[] | null {
-    const elbow = isElbow(line.points);
-    if (elbow && !ELBOW_SEGMENTS.includes(sym.segments)) return null;
-    const source = elbow
-        ? [line.points[0], line.points[line.points.length - 1]]
-        : line.points;
-    return symmetryCopies(source, sym).map(([from, to, ...bend]) => {
+    if (isElbow(line.points)) return null;
+    return symmetryCopies(line.points, sym).map(([from, to, ...bend]) => {
         const base = {
             drawdyElementId: newId(),
             from,
@@ -62,7 +56,6 @@ export function lineCopies(
             ...(line.layer !== undefined && { layer: line.layer }),
             ...(line.roughness !== undefined && { roughness: line.roughness }),
             ...(line.seed !== undefined && { seed: line.seed }),
-            ...(elbow && { elbowRouting: true }),
             meta,
         };
         return line.kind === "arrow"

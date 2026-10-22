@@ -117,20 +117,18 @@ const sizeOf = (host: FakeHost) => {
     };
 };
 
-// Settings light up with a primary fill; tools, as in Drawdy's toolbar, with a primary underline.
+// Settings light up with a primary fill; the tool indicators, as in Drawdy's toolbar, with a primary underline.
 const highlighted = (host: FakeHost) =>
     schemaNodes(host.floating.get(BAR)?.schema ?? { type: "box" })
         .filter(
             (node) =>
                 node.type === "button" &&
-                (node.styles?.backgroundColor === STYLING.primary ||
-                    schemaNodes(node).some(
-                        (inner) =>
-                            inner.type === "box" &&
-                            inner.styles?.backgroundColor === STYLING.primary
-                    ))
+                node.styles?.backgroundColor === STYLING.primary
         )
         .map((node) => node.domId);
+
+const toolSets = (host: FakeHost) =>
+    host.sent.filter((s) => s.type === "command:tools:set-active");
 
 const TOOL_KEYS = ["pencil", "line", "arrow"];
 
@@ -150,7 +148,7 @@ const underlines = (host: FakeHost) => {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-test("turning the mode on switches to the Pencil, puts the bar at the bottom centre, draws the guides and watches strokes", async () => {
+test("turning the mode on leaves Drawdy's tool alone, puts the bar at the bottom centre, draws the guides and watches strokes", async () => {
     const { host, emit } = await started();
     const bar = host.floating.get(BAR);
     assert.ok(bar);
@@ -165,11 +163,7 @@ test("turning the mode on switches to the Pencil, puts the bar at the bottom cen
         width <= 1024 - 2 * 240,
         "at 1024 px wide the bar stays clear of Drawdy's corner controls"
     );
-    assert.deepEqual(highlighted(host), [
-        barButton("pencil"),
-        barButton("6"),
-        barButton("mirror"),
-    ]);
+    assert.deepEqual(highlighted(host), [barButton("6"), barButton("mirror")]);
     assert.deepEqual(underlines(host), {
         pencil: STYLING.primary,
         line: "transparent",
@@ -179,10 +173,8 @@ test("turning the mode on switches to the Pencil, puts the bar at the bottom cen
         (node) => node.domId === barButton("pencil")
     );
     assert.equal(pencil?.styles?.backgroundColor, STYLING.surface2);
-    const switched = host.sent.find(
-        (s) => s.type === "command:tools:set-active"
-    );
-    assert.deepEqual(switched?.req, { toolId: "pencil" });
+    assert.deepEqual(toolSets(host), []);
+    assert.deepEqual(noticeKeys(host), []);
     assert.equal(host.previews.length, 7);
     const circle = host.previews.find((el) => el.type === "shape");
     assert.ok(circle);
@@ -390,45 +382,56 @@ test("a window resize moves the bar to the new bottom centre", async () => {
     await escape(emit);
 });
 
-test("the tool buttons switch Drawdy's tool and highlight the choice at once", async () => {
+test("the tool icons only show state: they take no clicks", async () => {
     const { host, emit } = await started();
-    for (const tool of ["line", "arrow", "pencil"]) {
-        host.clear();
-        await click(emit, barButton(tool));
-        assert.deepEqual(
-            host.sent.find((s) => s.type === "command:tools:set-active")?.req,
-            { toolId: tool }
-        );
-        assert.deepEqual(
-            underlines(host),
-            Object.fromEntries(
-                TOOL_KEYS.map((t) => [
-                    t,
-                    t === tool ? STYLING.primary : "transparent",
-                ])
-            )
-        );
-        const fills = schemaNodes(host.floating.get(BAR)!.schema)
-            .filter((node) =>
-                TOOL_KEYS.some((t) => node.domId === barButton(t))
-            )
-            .map((node) => node.styles?.backgroundColor);
-        assert.ok(
-            !fills.includes(STYLING.primary),
-            "tools never get the lime fill"
-        );
+    for (const tool of TOOL_KEYS) {
+        assert.equal(await click(emit, barButton(tool)), false);
     }
+    const group = schemaNodes(host.floating.get(BAR)!.schema).find(
+        (node) =>
+            node.type === "row" &&
+            (node.children ?? []).some(
+                (child) => child.domId === barButton("line")
+            )
+    );
+    assert.equal(group?.styles?.pointerEvents, "none");
+    assert.deepEqual(toolSets(host), []);
     await escape(emit);
+});
+
+test("turning on with a tool Kaleidoscope can't mirror says which tools to pick, for 4 s", async () => {
+    const off = await started({ tool: "select" });
+    assert.deepEqual(noticeKeys(off.host), [barNotice("pick")]);
+    assert.deepEqual(underlines(off.host), {
+        pencil: "transparent",
+        line: "transparent",
+        arrow: "transparent",
+    });
+    await escape(off.emit);
+
+    const on = await started({ tool: "pencil" });
+    assert.deepEqual(noticeKeys(on.host), []);
+    await escape(on.emit);
 });
 
 test("the poll keeps the tool highlight in sync with Drawdy's toolbar", async (t) => {
     t.mock.timers.enable({ apis: ["setInterval"] });
     const { host, emit } = await started();
-    host.setTool("arrow");
-    t.mock.timers.tick(1000);
-    await settle();
-    assert.ok(highlighted(host).includes(barButton("arrow")));
-    assert.ok(!highlighted(host).includes(barButton("pencil")));
+    for (const tool of ["arrow", "line", "select", "pencil"]) {
+        host.setTool(tool);
+        t.mock.timers.tick(1000);
+        await settle();
+        assert.deepEqual(
+            underlines(host),
+            Object.fromEntries(
+                TOOL_KEYS.map((k) => [
+                    k,
+                    k === tool ? STYLING.primary : "transparent",
+                ])
+            )
+        );
+    }
+    assert.deepEqual(toolSets(host), []);
     await escape(emit);
 });
 
@@ -562,7 +565,7 @@ test("an arrow at 6 segments with Mirror gives 11 arrows whose ends are the orig
     await escape(emit);
 });
 
-test("an elbow arrow is skipped with a notice at 6 segments and copied at 4", async () => {
+test("an elbow arrow is never mirrored, at any segment count, and the bar says so", async () => {
     const { host, emit } = await started();
     await drawPath(host, emit, "arrow", ELBOW);
     assert.equal(adds(host).length, 0);
@@ -570,9 +573,9 @@ test("an elbow arrow is skipped with a notice at 6 segments and copied at 4", as
 
     await click(emit, barButton("4"));
     await drawPath(host, emit, "arrow", { ...ELBOW, drawdyElementId: "e2" });
-    const made = lineCopiesOf(host, "e2");
-    assert.equal(made.length, 7);
-    assert.ok(made.every((el) => el.elbowRouting === true));
+    assert.equal(adds(host).length, 0);
+    assert.equal(lineCopiesOf(host, "e2").length, 0);
+    assert.deepEqual(noticeKeys(host), [barNotice("elbow")]);
     await escape(emit);
 });
 

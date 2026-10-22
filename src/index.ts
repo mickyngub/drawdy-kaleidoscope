@@ -63,8 +63,10 @@ export const ADD_FAILED = "The board would not take the copies";
 export const UNSUPPORTED_TOOL =
     "Kaleidoscope mirrors the Pencil, Line and Arrow";
 
-export const ELBOW_SEGMENTS_ONLY = "Elbow arrows mirror at 2 or 4 segments";
+export const PICK_TOOL = "Pick the Pencil, Line or Arrow in Drawdy's toolbar";
+export const ELBOW_NOT_MIRRORED = "Elbow arrows aren't mirrored";
 
+const PICK_TOOL_MS = 4000;
 const TOOL_POLL_MS = 1000;
 const BURST_GAP_MS = 150;
 const TOOL_RECHECK_MS = 200;
@@ -82,9 +84,9 @@ const UNSUPPORTED_TOOLS = new Set([
 
 const GROUPS: BarChoice[][] = [
     [
-        { key: "pencil", label: "Pencil", icon: PENCIL_ICON },
-        { key: "line", label: "Line", icon: LINE_ICON },
-        { key: "arrow", label: "Arrow", icon: ARROW_ICON },
+        { key: "pencil", label: "Pencil", icon: PENCIL_ICON, indicator: true },
+        { key: "line", label: "Line", icon: LINE_ICON, indicator: true },
+        { key: "arrow", label: "Arrow", icon: ARROW_ICON, indicator: true },
     ],
     SEGMENT_CHOICES.map((n) => ({ key: String(n), label: String(n) })),
     [{ key: "mirror", label: "Mirror" }],
@@ -242,11 +244,8 @@ async function start(): Promise<void> {
     };
     // The first scene command, so a refused permission stops here with nothing to undo.
     const guides = await createGuides(sym);
-    await issue({
-        type: "command:tools:set-active",
-        ...stamp(),
-        req: { toolId: "pencil" },
-    });
+    // Never set the tool: the driver call moves the engine but not Drawdy's toolbar highlight.
+    const tool = await activeTool();
     const subscribed = await Promise.all([
         issue({
             type: "subscription:scene:elements-added",
@@ -278,14 +277,23 @@ async function start(): Promise<void> {
         }, TOOL_POLL_MS),
         polling: false,
         recheck: false,
-        tool: "pencil",
+        tool,
         pointerAt: -Infinity,
         toolCheckedAt: -Infinity,
     };
-    active.watch.onTool("pencil", performance.now());
+    active.watch.onTool(tool, performance.now());
     mode = active;
-    await bar.show(activeKeys(s, active.tool));
+    await bar.show(activeKeys(s, tool));
+    await holdForTool(tool);
+    if (tool === null || !TOOLS.includes(tool)) {
+        await bar.notice({ key: "pick", text: PICK_TOOL }, PICK_TOOL_MS);
+    }
 }
+
+const holdForTool = (tool: string | null): Promise<void> =>
+    tool !== null && UNSUPPORTED_TOOLS.has(tool)
+        ? bar.hold({ key: "tool", text: UNSUPPORTED_TOOL })
+        : bar.release("tool");
 
 async function showTool(active: Mode, tool: string | null): Promise<void> {
     const highlightChanged =
@@ -295,9 +303,7 @@ async function showTool(active: Mode, tool: string | null): Promise<void> {
     if (changed && highlightChanged) {
         await bar.show(activeKeys(await loadSettings(), tool));
     }
-    await (tool !== null && UNSUPPORTED_TOOLS.has(tool)
-        ? bar.hold({ key: "tool", text: UNSUPPORTED_TOOL })
-        : bar.release("tool"));
+    await holdForTool(tool);
 }
 
 // Drawdy announces no tool changes, so the highlight, the notice and the
@@ -376,16 +382,6 @@ async function choose(key: string): Promise<void> {
     if (key === "recentre") {
         active.sym = { ...active.sym, centre: centreOf(await viewportRect()) };
         await rebuildGuides(active);
-        return;
-    }
-    if (TOOLS.includes(key)) {
-        await issue({
-            type: "command:tools:set-active",
-            ...stamp(),
-            req: { toolId: key },
-        });
-        active.watch.onTool(key, performance.now());
-        await showTool(active, key);
         return;
     }
     if (key === "mirror") {
@@ -530,7 +526,7 @@ async function copyLine(
         [driverId]: { v: 1, of: id },
     });
     if (copies === null) {
-        await bar.notice({ key: "elbow", text: ELBOW_SEGMENTS_ONLY });
+        await bar.notice({ key: "elbow", text: ELBOW_NOT_MIRRORED });
         return;
     }
     await addCopies(active, copies);
