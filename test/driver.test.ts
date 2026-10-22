@@ -107,17 +107,40 @@ test("activate asks for nothing that prompts: no storage, no scene, no tools", a
     assert.ok(types.includes("command:dom:create-action-button"));
 });
 
-test("turning the mode on centres the bar at the top, draws the guides and watches strokes", async () => {
-    const { host } = await started();
+const sizeOf = (host: FakeHost) => {
+    const styles = host.floating.get(BAR)?.schema.styles;
+    return {
+        width: styles?.width?.[0] as number,
+        height: styles?.height?.[0] as number,
+    };
+};
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test("turning the mode on switches to the Pencil, puts the bar at the bottom centre, draws the guides and watches strokes", async () => {
+    const { host, emit } = await started();
     const bar = host.floating.get(BAR);
     assert.ok(bar);
     assert.equal(bar.asPopover, false);
     assert.equal(bar.schema.styles?.pointerEvents, "auto");
-    const width = bar.schema.styles?.width?.[0] as number;
+    const { width, height } = sizeOf(host);
     assert.deepEqual(bar.position, {
         x: Math.round((1600 - width) / 2),
-        y: 64,
+        y: 1000 - height - 24,
     });
+    assert.ok(
+        width <= 1024 - 2 * 240,
+        "at 1024 px wide the bar stays clear of Drawdy's corner controls"
+    );
+    assert.ok(
+        schemaNodes(bar.schema).some(
+            (node) => node.type === "text" && node.domId === `${BAR}:hint`
+        )
+    );
+    const switched = host.sent.find(
+        (s) => s.type === "command:tools:set-active"
+    );
+    assert.deepEqual(switched?.req, { toolId: "pencil" });
     assert.equal(host.previews.length, 7);
     const circle = host.previews.find((el) => el.type === "shape");
     assert.ok(circle);
@@ -128,6 +151,7 @@ test("turning the mode on centres the bar at the top, draws the guides and watch
     );
     assert.ok(host.subscribedTo("subscription:scene:elements-added"));
     assert.ok(host.subscribedTo("subscription:scene:pointer-position"));
+    await escape(emit);
 });
 
 test("a local pencil stroke gains 11 copies in one add, tagged with the original", async () => {
@@ -154,7 +178,8 @@ test("a local pencil stroke gains 11 copies in one add, tagged with the original
 });
 
 test("a stroke drawn while another tool is active is not copied", async () => {
-    const { host, emit } = await started({ tool: "select" });
+    const { host, emit } = await started();
+    host.setTool("select");
     await draw(host, emit);
     assert.equal(adds(host).length, 0);
     await escape(emit);
@@ -312,13 +337,42 @@ test("Recentre moves the guides to the centre of the current view", async () => 
     await escape(emit);
 });
 
-test("a window resize re-centres the bar", async () => {
+test("a window resize moves the bar to the new bottom centre", async () => {
     const { host, emit } = await started();
-    const width = host.floating.get(BAR)!.schema.styles?.width?.[0] as number;
+    const { width, height } = sizeOf(host);
     await emit("subscription:dom:screen-resized", { width: 1000, height: 700 });
     assert.deepEqual(host.floating.get(BAR)?.position, {
         x: Math.round((1000 - width) / 2),
-        y: 64,
+        y: 700 - height - 24,
     });
     await escape(emit);
+});
+
+test("off the Pencil, the bar holds a pencil notice until the Pencil is back", async (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const { host, emit } = await started();
+    host.setTool("rect");
+    t.mock.timers.tick(1000);
+    await settle();
+    assert.deepEqual(noticeKeys(host), [barNotice("pencil")]);
+    const { height } = sizeOf(host);
+    assert.equal(host.floating.get(BAR)?.position.y, 1000 - height - 24);
+
+    host.setTool("pencil");
+    t.mock.timers.tick(1000);
+    await settle();
+    assert.deepEqual(noticeKeys(host), []);
+    await escape(emit);
+});
+
+test("stopping ends the tool poll", async (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const { host, emit } = await started();
+    await escape(emit);
+    host.clear();
+    host.setTool("rect");
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.ok(!host.types().includes("command:tools:get-active"));
+    assert.ok(!host.floating.has(BAR));
 });

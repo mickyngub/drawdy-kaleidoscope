@@ -8,16 +8,23 @@ export type BarChoice = { key: string; label: string };
 
 export type BarNotice = { key: string; text: string };
 
-export type BarLook = { driverId: string; styling: ModuleStyling };
+export type BarHint = { text: string; width: number };
 
-// Clears Drawdy's main toolbar, which spans about y 12 to 50 px.
-export const BAR_Y = 64;
+export type BarLook = {
+    driverId: string;
+    styling: ModuleStyling;
+    hint?: BarHint;
+};
+
+// Bottom centre keeps clear of Drawdy's toolbar and its tooltips at the top and of its corner controls.
+export const BAR_BOTTOM_GAP = 24;
 export const NOTICE_MS = 3000;
 
 const PADDING = 6;
 const BORDER = 1;
 const GAP = 4;
 const BUTTON_HEIGHT = 28;
+const NOTICE_HEIGHT = 16;
 const MIN_BUTTON = 32;
 const LABEL_CHAR_PX = 7.5;
 const LABEL_PADDING = 20;
@@ -26,6 +33,8 @@ export const barId = (driverId: string): string => `${driverId}:bar`;
 
 export const barButtonId = (driverId: string, key: string): string =>
     `${driverId}:bar:${key}`;
+
+export const barHintId = (driverId: string): string => `${driverId}:bar:hint`;
 
 export const barNoticeId = (driverId: string, key: string): string =>
     `${driverId}:bar:notice:${key}`;
@@ -36,11 +45,24 @@ const buttonWidth = (label: string): number =>
         Math.round(LABEL_PADDING + label.length * LABEL_CHAR_PX)
     );
 
-// The bar is centred from its own width because a floating element is placed by its top-left corner.
-export const barWidth = (choices: readonly BarChoice[]): number =>
+// A floating element is placed by its top-left corner, so the bar's size is fixed here rather than measured.
+export const barWidth = (
+    choices: readonly BarChoice[],
+    hint?: BarHint
+): number => {
+    const items = choices.map((c) => buttonWidth(c.label));
+    if (hint) items.push(hint.width);
+    return (
+        2 * (PADDING + BORDER) +
+        items.reduce((sum, w) => sum + w, 0) +
+        GAP * Math.max(0, items.length - 1)
+    );
+};
+
+export const barHeight = (withNotice: boolean): number =>
     2 * (PADDING + BORDER) +
-    choices.reduce((sum, c) => sum + buttonWidth(c.label), 0) +
-    GAP * Math.max(0, choices.length - 1);
+    BUTTON_HEIGHT +
+    (withNotice ? GAP + NOTICE_HEIGHT : 0);
 
 export function barSchema(
     look: BarLook,
@@ -48,9 +70,9 @@ export function barSchema(
     active: readonly string[],
     notice?: BarNotice
 ): DomElementSchema {
-    const { driverId, styling } = look;
-    const width = barWidth(choices);
-    const buttons: DomElementSchema[] = choices.map((c) => {
+    const { driverId, styling, hint } = look;
+    const width = barWidth(choices, hint);
+    const items: DomElementSchema[] = choices.map((c) => {
         const on = active.includes(c.key);
         return {
             type: "button",
@@ -79,10 +101,24 @@ export function barSchema(
             ],
         };
     });
+    if (hint) {
+        items.unshift({
+            type: "text",
+            domId: barHintId(driverId),
+            child: hint.text,
+            styles: {
+                width: [hint.width, "px"],
+                color: styling.mutedForeground,
+                fontSize: [12, "px"],
+                fontWeight: "medium",
+                textAlign: "center",
+            },
+        });
+    }
     const children: DomElementSchema[] = [
         {
             type: "row",
-            children: buttons,
+            children: items,
             styles: { gap: GAP, crossAxisAlignment: "center" },
         },
     ];
@@ -93,6 +129,7 @@ export function barSchema(
             child: notice.text,
             styles: {
                 width: [width - 2 * (PADDING + BORDER), "px"],
+                height: [NOTICE_HEIGHT, "px"],
                 color: styling.foreground,
                 fontSize: [12, "px"],
                 textAlign: "center",
@@ -104,6 +141,7 @@ export function barSchema(
         children,
         styles: {
             width: [width, "px"],
+            height: [barHeight(notice !== undefined), "px"],
             padding: [PADDING, "px"],
             gap: GAP,
             backgroundColor: styling.surface,
@@ -121,39 +159,52 @@ export type Bar = {
     keyOf(domElementId: string): string | null;
     show(active: readonly string[]): Promise<void>;
     notice(notice: BarNotice): Promise<void>;
-    resize(windowWidth: number): Promise<void>;
+    hold(notice: BarNotice): Promise<void>;
+    release(key: string): Promise<void>;
+    resize(size: { width: number; height: number }): Promise<void>;
     restyle(styling: ModuleStyling): Promise<void>;
     hide(): Promise<void>;
     readonly shown: boolean;
 };
 
-// A notice raised while the bar is hidden shows the bar on its own and takes it away with the notice.
+// notice() shows for NOTICE_MS; hold() stays until release(). A notice raised
+// while the bar is hidden shows the bar on its own and takes it away again.
 export function createBar(o: {
     issue: DriverCommandIssuer;
     driverId: string;
     choices: readonly BarChoice[];
+    hint?: BarHint;
     styling: ModuleStyling;
     requestId: () => string;
     log: (message: string, err: unknown) => void;
 }): Bar {
-    const { issue, driverId, choices } = o;
+    const { issue, driverId, choices, hint } = o;
     const domId = barId(driverId);
     const stamp = () => ({ driverId, requestId: o.requestId() });
     let styling = o.styling;
     let wanted: { active: readonly string[]; transient: boolean } | null = null;
     let notice: BarNotice | null = null;
+    let held: BarNotice | null = null;
     let noticeTimer: ReturnType<typeof setTimeout> | null = null;
-    let windowWidth: number | null = null;
+    let windowSize: { width: number; height: number } | null = null;
     let created = false;
     let chain: Promise<void> = Promise.resolve();
 
-    const position = () => ({
-        x: Math.max(
-            0,
-            Math.round(((windowWidth ?? 0) - barWidth(choices)) / 2)
-        ),
-        y: BAR_Y,
-    });
+    const shownNotice = (): BarNotice | null => notice ?? held;
+
+    const position = () => {
+        const size = windowSize ?? { width: 0, height: 0 };
+        return {
+            x: Math.max(
+                0,
+                Math.round((size.width - barWidth(choices, hint)) / 2)
+            ),
+            y: Math.max(
+                0,
+                size.height - barHeight(shownNotice() !== null) - BAR_BOTTOM_GAP
+            ),
+        };
+    };
 
     const reconcile = async (): Promise<void> => {
         if (!wanted) {
@@ -166,19 +217,19 @@ export function createBar(o: {
             });
             return;
         }
-        if (windowWidth === null) {
+        if (windowSize === null) {
             const size = await issue({
                 type: "command:dom:window-size",
                 ...stamp(),
             });
-            windowWidth = size.res.value?.width ?? 0;
+            windowSize = size.res.value ?? { width: 0, height: 0 };
         }
         if (!wanted) return;
         const schema = barSchema(
-            { driverId, styling },
+            { driverId, styling, hint },
             choices,
             wanted.active,
-            notice ?? undefined
+            shownNotice() ?? undefined
         );
         if (created) {
             await issue({
@@ -245,8 +296,20 @@ export function createBar(o: {
             }, NOTICE_MS);
             return sync();
         },
-        resize(width) {
-            windowWidth = width;
+        hold(next) {
+            if (held?.key === next.key && held.text === next.text) {
+                return chain;
+            }
+            held = next;
+            return wanted ? sync() : Promise.resolve();
+        },
+        release(key) {
+            if (held?.key !== key) return chain;
+            held = null;
+            return wanted ? sync() : Promise.resolve();
+        },
+        resize(size) {
+            windowSize = size;
             if (!created) return Promise.resolve();
             chain = chain
                 .then(async () => {
@@ -266,6 +329,7 @@ export function createBar(o: {
         },
         hide() {
             clearNotice();
+            held = null;
             wanted = null;
             return sync();
         },

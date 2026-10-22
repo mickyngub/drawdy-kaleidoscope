@@ -10,7 +10,8 @@ First public release
 - the copies keep the stroke's colour, width and opacity, and the default ink keeps following the board theme
 - all the copies of a stroke are one undo step, so one ⌘Z takes them away and the next takes the stroke
 - only your own pencil strokes are copied, never a collaborator's, a paste or an undo
-- a bar just below Drawdy's toolbar holds the choices; Stop, Escape or the button again turns it off
+- turning it on switches you to the Pencil; a bar at the bottom centre holds the choices, says it works with the Pencil only, and reminds you to pick the Pencil if you switch tools
+- Stop, Escape or the button again turns it off
 - segments and Mirror are remembered between sessions, and it always starts off when a board opens
 - a full board or a denied permission gets a short message in the bar
 - board and storage permissions are asked when you first turn it on, not when the board loads

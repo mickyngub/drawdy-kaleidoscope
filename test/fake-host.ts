@@ -172,6 +172,9 @@ export function fakeHost(options: Options = {}, rectOf: RectOf = plainRect) {
                 return ok({ removed: floating.delete(cmd.req.domId) });
             case "command:tools:get-active":
                 return ok({ toolId: tool });
+            case "command:tools:set-active":
+                tool = cmd.req.toolId;
+                return ok();
             case "command:kv-storage:get":
                 return ok({ got: { [cmd.req.key]: kv[cmd.req.key] } });
             case "command:kv-storage:set":

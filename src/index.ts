@@ -39,6 +39,10 @@ export const NEEDS_PERMISSION = "Needs board permission";
 export const BOARD_FULL =
     "The board is full (10,000 elements), so no copies were added";
 export const ADD_FAILED = "The board would not take the copies";
+export const PICK_PENCIL = "Pick the Pencil to mirror your strokes";
+
+const PENCIL_POLL_MS = 1000;
+const HINT = { text: "✏️ Pencil only", width: 96 };
 
 const CHOICES: BarChoice[] = [
     ...SEGMENT_CHOICES.map((n) => ({ key: String(n), label: String(n) })),
@@ -55,6 +59,8 @@ type Mode = {
     subscriptions: string[];
     guides: string | null;
     queue: Promise<void>;
+    poll: ReturnType<typeof setInterval>;
+    polling: boolean;
 };
 
 type Rect = { x: number; y: number; width: number; height: number };
@@ -186,6 +192,11 @@ async function start(): Promise<void> {
     };
     // The first scene command, so a refused permission stops here with nothing to undo.
     const guides = await createGuides(sym);
+    await issue({
+        type: "command:tools:set-active",
+        ...stamp(),
+        req: { toolId: "pencil" },
+    });
     const subscribed = await Promise.all([
         issue({
             type: "subscription:scene:elements-added",
@@ -202,14 +213,34 @@ async function start(): Promise<void> {
     const subscriptions = subscribed.flatMap((res) =>
         res.res.value ? [res.res.value.subscriptionId] : []
     );
-    mode = {
+    const active: Mode = {
         sym,
         watch: createStrokeWatch({ driverId }),
         subscriptions,
         guides,
         queue: Promise.resolve(),
+        poll: setInterval(() => {
+            checkTool(active).catch((err) => log("tool check failed", err));
+        }, PENCIL_POLL_MS),
+        polling: false,
     };
+    mode = active;
     await bar.show(activeKeys(s));
+}
+
+// Drawdy announces no tool changes, so the hint is kept honest by asking.
+async function checkTool(active: Mode): Promise<void> {
+    if (active.polling || mode !== active) return;
+    active.polling = true;
+    try {
+        const onPencil = (await activeTool()) === "pencil";
+        if (mode !== active) return;
+        await (onPencil
+            ? bar.release("pencil")
+            : bar.hold({ key: "pencil", text: PICK_PENCIL }));
+    } finally {
+        active.polling = false;
+    }
 }
 
 async function stop(): Promise<void> {
@@ -217,6 +248,7 @@ async function stop(): Promise<void> {
     mode = null;
     const tasks: Promise<unknown>[] = [bar.hide()];
     if (active) {
+        clearInterval(active.poll);
         tasks.push(deleteGuides(active.guides));
         for (const subscriptionId of active.subscriptions) {
             tasks.push(
@@ -402,6 +434,7 @@ export const activate: DriverModule["activate"] = async (ctx) => {
         issue,
         driverId,
         choices: CHOICES,
+        hint: HINT,
         styling: ctx.styling,
         requestId: () => String(seq++),
         log,
@@ -453,7 +486,7 @@ export const onEvent: DriverModule["onEvent"] = async (event) => {
                 return;
             }
             case "subscription:dom:screen-resized": {
-                await bar.resize(event.body.width);
+                await bar.resize(event.body);
                 return;
             }
             case "subscription:dom:theme-changed": {

@@ -11,11 +11,11 @@ Every pencil stroke you finish comes back around a centre point, turned and mirr
 ## let's draw ٩(◕‿◕)۶
 
 1. Click the **flower** in the extension rail.
-2. A bar opens just below Drawdy's toolbar, and dashed guide lines fan out from the middle of your view. Pick **2**, **3**, **4**, **6**, **8** or **12** segments.
-3. Pick the **Pencil** and draw. Every stroke you finish is copied into each segment; collaborators' strokes are left alone.
+2. Kaleidoscope switches you to the **Pencil**, a bar opens at the bottom of the screen, and dashed guide lines fan out from the middle of your view. Pick **2**, **3**, **4**, **6**, **8** or **12** segments.
+3. Draw. Every stroke you finish is copied into each segment; collaborators' strokes are left alone.
 4. Click **Stop** or press **Escape** when you're done.
 
-> (・_・;) **why did undo leave the stroke?** The first ⌘Z takes away all its copies; the next takes the stroke itself.
+> (・_・;) **nothing gets copied?** Only Pencil strokes are mirrored; shapes, lines and text are left alone.
 
 ---
 
