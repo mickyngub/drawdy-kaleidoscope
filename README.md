@@ -4,7 +4,7 @@
 
 Every pencil stroke, line and arrow you finish comes back around a centre point, turned and mirrored like a real kaleidoscope. A few squiggles become a snowflake, a flower or a mandala in seconds ✧
 
-![Turning Kaleidoscope on, drawing a few pencil strokes that are copied around the centre in 6 mirrored segments, then switching to 12 segments.](https://raw.githubusercontent.com/mickyngub/drawdy-kaleidoscope/main/docs/media/kaleidoscope.gif)
+![Turning Kaleidoscope on, which picks the Pencil, drawing two pencil strokes that are copied around the centre in 6 mirrored segments, drawing a straight line and an arrow with the bar's Line and Arrow tools, then switching to 12 segments and drawing one more stroke.](https://raw.githubusercontent.com/mickyngub/drawdy-kaleidoscope/main/docs/media/kaleidoscope.gif)
 
 ---
 
