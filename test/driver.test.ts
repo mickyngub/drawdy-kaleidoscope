@@ -34,7 +34,7 @@ const STROKE: Stored = {
 
 type Emit = Awaited<ReturnType<typeof boot>>["emit"];
 
-const STYLING = { theme: "light", primary: "#2563eb" };
+const STYLING = { theme: "light", primary: "#2563eb", surface2: "#e4e4e7" };
 
 async function started(options: Parameters<typeof fakeHost>[0] = {}) {
     const host = fakeHost(options);
@@ -117,12 +117,31 @@ const sizeOf = (host: FakeHost) => {
     };
 };
 
+// Settings light up with a primary fill; tools, as in Drawdy's toolbar, with a primary underline.
 const highlighted = (host: FakeHost) =>
     schemaNodes(host.floating.get(BAR)?.schema ?? { type: "box" })
         .filter(
             (node) =>
                 node.type === "button" &&
-                node.styles?.backgroundColor === STYLING.primary
+                (node.styles?.backgroundColor === STYLING.primary ||
+                    schemaNodes(node).some(
+                        (inner) =>
+                            inner.type === "box" &&
+                            inner.styles?.backgroundColor === STYLING.primary
+                    ))
+        )
+        .map((node) => node.domId);
+
+const underlined = (host: FakeHost) =>
+    schemaNodes(host.floating.get(BAR)?.schema ?? { type: "box" })
+        .filter(
+            (node) =>
+                node.type === "button" &&
+                schemaNodes(node).some(
+                    (inner) =>
+                        inner.type === "box" &&
+                        inner.styles?.backgroundColor === STYLING.primary
+                )
         )
         .map((node) => node.domId);
 
@@ -148,6 +167,11 @@ test("turning the mode on switches to the Pencil, puts the bar at the bottom cen
         barButton("6"),
         barButton("mirror"),
     ]);
+    assert.deepEqual(underlined(host), [barButton("pencil")]);
+    const pencil = schemaNodes(bar.schema).find(
+        (node) => node.domId === barButton("pencil")
+    );
+    assert.equal(pencil?.styles?.backgroundColor, STYLING.surface2);
     const switched = host.sent.find(
         (s) => s.type === "command:tools:set-active"
     );

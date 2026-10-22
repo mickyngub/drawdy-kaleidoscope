@@ -23,6 +23,10 @@ const BORDER = 1;
 const GAP = 4;
 const BUTTON = 32;
 const ICON = 16;
+const ICON_TOP = (BUTTON - ICON) / 2;
+const UNDERLINE_GAP = 3;
+const UNDERLINE_WIDTH = 14;
+const UNDERLINE_HEIGHT = 2;
 const RADIUS = 8;
 const DIVIDER_HEIGHT = 20;
 const NOTICE_HEIGHT = 16;
@@ -61,9 +65,66 @@ export const barWidth = (groups: readonly (readonly BarChoice[])[]): number => {
 export const barHeight = (withNotice: boolean): number =>
     2 * (PADDING + BORDER) + BUTTON + (withNotice ? GAP + NOTICE_HEIGHT : 0);
 
-function button(look: BarLook, c: BarChoice, on: boolean): DomElementSchema {
+// Tools mark the active one the way Drawdy's own toolbar does, a soft fill and
+// an underline, so they read apart from the lime settings beside them.
+function toolButton(
+    look: BarLook,
+    c: BarChoice,
+    icon: (colour: string) => string,
+    on: boolean
+): DomElementSchema {
     const { styling } = look;
-    const ink = on ? styling.primaryForeground : styling.foreground;
+    return {
+        type: "button",
+        domId: barButtonId(look.driverId, c.key),
+        styles: {
+            width: [BUTTON, "px"],
+            height: [BUTTON, "px"],
+            borderRadius: [RADIUS, "px"],
+            backgroundColor: on ? styling.surface2 : "transparent",
+            cursor: "pointer",
+            hover: { backgroundColor: styling.surface2 },
+        },
+        children: [
+            {
+                type: "column",
+                styles: {
+                    width: [BUTTON, "px"],
+                    height: [BUTTON, "px"],
+                    crossAxisAlignment: "center",
+                    pointerEvents: "none",
+                },
+                children: [
+                    { type: "box", styles: { height: [ICON_TOP, "px"] } },
+                    {
+                        type: "image",
+                        child: icon(styling.foreground),
+                        styles: {
+                            width: [ICON, "px"],
+                            height: [ICON, "px"],
+                        },
+                    },
+                    { type: "box", styles: { height: [UNDERLINE_GAP, "px"] } },
+                    {
+                        type: "box",
+                        styles: {
+                            width: [UNDERLINE_WIDTH, "px"],
+                            height: [UNDERLINE_HEIGHT, "px"],
+                            borderRadius: [UNDERLINE_HEIGHT / 2, "px"],
+                            backgroundColor: on
+                                ? styling.primary
+                                : "transparent",
+                        },
+                    },
+                ],
+            },
+        ],
+    };
+}
+
+function button(look: BarLook, c: BarChoice, on: boolean): DomElementSchema {
+    if (c.icon) return toolButton(look, c, c.icon, on);
+    const { styling } = look;
     return {
         type: "button",
         domId: barButtonId(look.driverId, c.key),
@@ -73,30 +134,19 @@ function button(look: BarLook, c: BarChoice, on: boolean): DomElementSchema {
             borderRadius: [RADIUS, "px"],
             backgroundColor: on ? styling.primary : "transparent",
             cursor: "pointer",
-            ...(c.icon && { padding: [(BUTTON - ICON) / 2, "px"] }),
             ...(on ? {} : { hover: { backgroundColor: styling.surface2 } }),
         },
         children: [
-            c.icon
-                ? {
-                      type: "image",
-                      child: c.icon(ink),
-                      styles: {
-                          width: [ICON, "px"],
-                          height: [ICON, "px"],
-                          pointerEvents: "none",
-                      },
-                  }
-                : {
-                      type: "text",
-                      child: c.label,
-                      styles: {
-                          color: ink,
-                          fontSize: [13, "px"],
-                          fontWeight: "medium",
-                          textAlign: "center",
-                      },
-                  },
+            {
+                type: "text",
+                child: c.label,
+                styles: {
+                    color: on ? styling.primaryForeground : styling.foreground,
+                    fontSize: [13, "px"],
+                    fontWeight: "medium",
+                    textAlign: "center",
+                },
+            },
         ],
     };
 }
