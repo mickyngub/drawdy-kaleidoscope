@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- a new icon, shown on the marketplace card and on the extension's button
+
 ## 1.0.1
 
 - the floating toolbar now looks like Drawdy's own: grouped with dividers, icons on Mirror, Recentre and Stop, and a lime underline only under the active choice

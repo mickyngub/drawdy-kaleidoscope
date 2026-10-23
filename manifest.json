@@ -1,7 +1,7 @@
 {
     "driverId": "mickyngub.kaleidoscope",
     "driverName": "Kaleidoscope",
-    "driverVersion": "1.0.1",
+    "driverVersion": "1.0.2",
     "description": "Draw one stroke, get a mandala. Click the flower, pick Pencil, Line or Arrow in Drawdy's toolbar and draw: everything you finish is copied around a centre point, turned and mirrored. Choose 2, 3, 4, 6, 8 or 12 segments, turn Mirror on or off, and Recentre to the middle of your view. Dashed guides only you see mark the segments, and one undo takes the copies away. Made for mandalas, snowflakes and doodling on calls.",
     "icon": "icon.png",
     "main": "main.js",
