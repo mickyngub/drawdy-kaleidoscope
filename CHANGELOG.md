@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- the floating toolbar now looks like Drawdy's own: grouped with dividers, icons on Mirror, Recentre and Stop, and a lime underline only under the active choice
+- the guides follow Drawdy's light or dark theme
+
 ## 1.0.0
 
 First public release
